@@ -17,8 +17,8 @@ function propagateCandidate(otherTransport, otherTransportName, event) {
   let port = parseInt(candidate.slice(candidateParts[0].lastIndexOf(':')+1));
   let type = candidateParts[1];
   let foundation = candidateParts[2];
-  let relatedAddress = candidateParts[3] ? candidateParts[3].slice(0, candidateParts[3].lastIndexOf(':')) : "";
-  let relatedAddressPort = candidateParts[3] ? parseInt(candidateParts[3].slice(candidateParts[3].lastIndexOf(':')+1)) : "";
+  let relatedAddress = candidateParts[3] ? candidateParts[3].slice(0, candidateParts[3].lastIndexOf(':')) : "127.0.0.1";
+  let relatedAddressPort = candidateParts[3] ? parseInt(candidateParts[3].slice(candidateParts[3].lastIndexOf(':')+1)) : "0";
   let networkId = candidateParts[4];
   let usernamePassword = event.candidate.usernameFragment.split(" ");
   let candidateDict = {address, port, usernameFragment: usernamePassword[0], password: usernamePassword[1], type, foundation, relatedAddress, relatedAddressPort, networkId};
