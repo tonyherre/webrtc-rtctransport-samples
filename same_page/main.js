@@ -12,10 +12,17 @@ let dec = new TextDecoder();
 function propagateCandidate(otherTransport, otherTransportName, event) {
   console.log(`Candidate ${event.candidate.candidate}, username ${event.candidate.usernameFragment}`);
   let candidate = event.candidate.candidate;
-  let address = candidate.slice(0, candidate.lastIndexOf(':'));
-  let port = parseInt(candidate.slice(candidate.lastIndexOf(':')+1));
+  let candidateParts = candidate.split(" ");
+  let address = candidate.slice(0, candidateParts[0].lastIndexOf(':'));
+  let port = parseInt(candidate.slice(candidateParts[0].lastIndexOf(':')+1));
+  let type = candidateParts[1];
+  let foundation = candidateParts[2];
+  let relatedAddress = candidateParts[3] ? candidateParts[3].slice(0, candidateParts[3].lastIndexOf(':')) : "";
+  let relatedAddressPort = candidateParts[3] ? parseInt(candidateParts[3].slice(candidateParts[3].lastIndexOf(':')+1)) : "";
+  let networkId = candidateParts[4];
   let usernamePassword = event.candidate.usernameFragment.split(" ");
-  let candidateDict = {address, port, usernameFragment: usernamePassword[0], password: usernamePassword[1]};
+  let candidateDict = {address, port, usernameFragment: usernamePassword[0], password: usernamePassword[1], type, foundation, relatedAddress, relatedAddressPort, networkId};
+
   console.log(`Adding remote candidate`, candidateDict);
   otherTransport.addRemoteCandidate(candidateDict);
     statusEl.innerText += `propagated candidate ${event.candidate.candidate} to ${otherTransportName}\n`;
