@@ -17,10 +17,26 @@ function propagateCandidate(event) {
   let address = candidate.slice(0, candidateParts[0].lastIndexOf(':'));
   let port = parseInt(candidate.slice(candidateParts[0].lastIndexOf(':')+1));
   let type = candidateParts[1];
+  let foundation = candidateParts[2];
+  let relatedAddress = candidateParts[3] ? candidateParts[3].slice(0, candidateParts[3].lastIndexOf(':')) : "127.0.0.1";
+  let relatedAddressPort = candidateParts[3] ? parseInt(candidateParts[3].slice(candidateParts[3].lastIndexOf(':')+1)) : "0";
+  let networkId = candidateParts[4];
+  let priority = candidateParts[5];
   let usernamePassword = event.candidate.usernameFragment.split(" ");
-  let candidateDict = {address, port, usernameFragment: usernamePassword[0], password: usernamePassword[1], type};
+  let candidateDict = {address, port, usernameFragment: usernamePassword[0], password: usernamePassword[1], type, foundation, relatedAddress, relatedAddressPort, networkId, priority};
+
   console.log(`Progate remote candidate: `, candidateDict);
-  statusEl.innerText += `Progate remote candidate ${JSON.stringify(candidateDict)}\n`;
+  let newEl = document.createElement("p");
+  newEl.innerText = JSON.stringify(candidateDict);
+  newEl.onclick = () => {
+    var range = document.createRange();
+    var selection = window.getSelection();
+    range.selectNodeContents(newEl);
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+  document.getElementById("candidateList").appendChild(newEl);
 }
 
 async function pollWritable(transport, name, sendButton) {
@@ -31,10 +47,7 @@ async function pollWritable(transport, name, sendButton) {
     setTimeout(() => pollWritable(transport, name, sendButton), 100);
   }
 }
-/*
-                         Cand[:189006332:1:udp:1685987071:104.135.186.62:16101:srflx:192.0.0.2:49447:HDbC8tFe4mMxjVsN:rWdfBXFYq3zVi766ABxs74Ij:1:10:0]
-Adding remote candidate: Cand[::1:udp:0:104.135.186.62:33852:srflx::0:/pdYpz7qDLrl3uGF:BW894qZPkN+RWdKFKwIe+wx9:0:0:0]
-*/
+
 async function pollReceivedPackets(transport, name) {
   let packets = transport.getReceivedPackets();
   if (packets.length > 0) {
@@ -45,8 +58,8 @@ async function pollReceivedPackets(transport, name) {
 
 let params = new URLSearchParams(document.location.search);
 
-console.log("Ice controlling: ", params.get("iceControlling") || "true");
-transport = new RtcTransport({name:"myTransport1", iceServers: [{urls: "stun:stun.l.google.com:19302"}], iceControlling: params.get("iceControlling") || true});
+console.log("Ice controlling: ", params.get("iceControlling") === 'true');
+transport = new RtcTransport({name:"myTransport1", iceServers: [{urls: "stun:stun.l.google.com:19302"}], iceControlling: params.get("iceControlling") === 'true'});
 
 transport.onicecandidate = (event) => {
   propagateCandidate(event);
