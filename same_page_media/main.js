@@ -23,6 +23,7 @@ let transport1, transport2;
 // Video processing
 let decoder;
 let mediaTrack;
+let streamVersion = 0;
 let pendingPackets = [];
 let renderedFrames = 0;
 let frameCounter = 0;
@@ -137,11 +138,12 @@ function handleEncodedChunk(chunk) {
   const packets = [];
   for (let i = 0; i < chunkData.byteLength; i += CONFIG.maxPacketSize) {
     const end = Math.min(i + CONFIG.maxPacketSize, chunkData.byteLength);
-    const packet = new ArrayBuffer(end - i + 2);
+    const packet = new ArrayBuffer(end - i + 3);
     const packetView = new Uint8Array(packet);
     packetView[0] = end === chunkData.byteLength ? 1 : 0;
     packetView[1] = chunk.type === "key" ? 1 : 0;
-    packetView.set(chunkData.slice(i, end), 2);
+    packetView[2] = streamVersion;
+    packetView.set(chunkData.slice(i, end), 3);
     packets.push({ data: packet });
   }
 
@@ -206,16 +208,24 @@ function decodeAvailableFrames() {
   while (pendingPackets.length > 0) {
     const packet = new Uint8Array(pendingPackets.shift());
     framePackets.push(packet);
-    encodedFrameSize += packet.byteLength - 2;
+    encodedFrameSize += packet.byteLength - 3;
 
     if (packet[0] === 1) {
+      const packetVersion = packet[2];
+      if (packetVersion !== streamVersion) {
+        // This frame is from an old stream, discard it
+        framePackets = [];
+        encodedFrameSize = 0;
+        continue;
+      }
+
       const encodedFrame = new Uint8Array(encodedFrameSize);
       let offset = 0;
       const isKeyFrame = packet[1] === 1;
 
       framePackets.forEach((p) => {
-        encodedFrame.set(p.slice(2), offset);
-        offset += p.length - 2;
+        encodedFrame.set(p.slice(3), offset);
+        offset += p.length - 3;
       });
 
       const chunk = new EncodedVideoChunk({
@@ -291,6 +301,7 @@ function main() {
     const [width, height] = resolutionSelect.value.split('x');
     CONFIG.video.width = parseInt(width, 10);
     CONFIG.video.height = parseInt(height, 10);
+    streamVersion++;
 
     // Re-configure canvas and decoder for new resolution
     canvas.width = CONFIG.video.width;
