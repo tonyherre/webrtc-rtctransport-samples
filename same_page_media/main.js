@@ -22,6 +22,7 @@ let transport1, transport2;
 
 // Video processing
 let decoder;
+let mediaTrack;
 let pendingPackets = [];
 let renderedFrames = 0;
 let frameCounter = 0;
@@ -236,22 +237,27 @@ function decodeAvailableFrames() {
  */
 async function setupMedia() {
   try {
+    if (mediaTrack) {
+      mediaTrack.stop();
+    }
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { width: CONFIG.video.width, height: CONFIG.video.height },
     });
 
-    const track = stream.getTracks()[0];
-    const processor = new MediaStreamTrackProcessor(track);
+    mediaTrack = stream.getTracks()[0];
+    const processor = new MediaStreamTrackProcessor(mediaTrack);
     const encoder = createEncoder();
     startTime = performance.now();
 
+    let isFirstFrame = true;
     for await (const frame of processor.readable) {
       if (encoder.encodeQueueSize > 2) {
         frame.close();
         droppedFrames++;
       } else {
         frameCounter++;
-        const keyFrame = frameCounter % 150 === 0;
+        const keyFrame = isFirstFrame || (frameCounter % 150 === 0);
+        isFirstFrame = false;
         encoder.encode(frame, { keyFrame });
         frame.close();
       }
@@ -285,6 +291,20 @@ function main() {
     const [width, height] = resolutionSelect.value.split('x');
     CONFIG.video.width = parseInt(width, 10);
     CONFIG.video.height = parseInt(height, 10);
+
+    // Re-configure canvas and decoder for new resolution
+    canvas.width = CONFIG.video.width;
+    canvas.height = CONFIG.video.height;
+    if (decoder) {
+      decoder.close();
+    }
+    decoder = createDecoder();
+
+    // Reset counters
+    frameCounter = 0;
+    renderedFrames = 0;
+    droppedFrames = 0;
+
     // Restart media with new resolution
     // Note: This will request camera access again.
     setupMedia();
