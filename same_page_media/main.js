@@ -131,7 +131,7 @@ function initializeTransports() {
  * Handles an encoded video chunk.
  * @param {EncodedVideoChunk} chunk - The encoded video chunk.
  */
-function handleEncodedChunk(chunk) {
+function handleEncodedChunk(chunk, version) {
   const chunkData = new Uint8Array(chunk.byteLength);
   chunk.copyTo(chunkData);
 
@@ -142,7 +142,7 @@ function handleEncodedChunk(chunk) {
     const packetView = new Uint8Array(packet);
     packetView[0] = end === chunkData.byteLength ? 1 : 0;
     packetView[1] = chunk.type === "key" ? 1 : 0;
-    packetView[2] = streamVersion;
+    packetView[2] = version;
     packetView.set(chunkData.slice(i, end), 3);
     packets.push({ data: packet });
   }
@@ -154,9 +154,9 @@ function handleEncodedChunk(chunk) {
  * Creates a new VideoEncoder.
  * @returns {VideoEncoder} The configured VideoEncoder.
  */
-function createEncoder() {
+function createEncoder(version) {
   const encoder = new VideoEncoder({
-    output: handleEncodedChunk,
+    output: (chunk) => handleEncodedChunk(chunk, version),
     error: (e) => console.error(e.message),
   });
   encoder.configure({
@@ -256,7 +256,7 @@ async function setupMedia() {
 
     mediaTrack = stream.getTracks()[0];
     const processor = new MediaStreamTrackProcessor(mediaTrack);
-    const encoder = createEncoder();
+    const encoder = createEncoder(streamVersion);
     startTime = performance.now();
 
     let isFirstFrame = true;
