@@ -304,6 +304,7 @@ function main() {
     frameCounter = 0;
     renderedFrames = 0;
     droppedFrames = 0;
+    pendingPackets = [];
 
     // Restart media with new resolution
     // Note: This will request camera access again.
