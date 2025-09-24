@@ -1,18 +1,46 @@
 <html>
+<head>
+  <title>RTC Transport - Cross Page</title>
+  <style>
+    body {
+      font-family: sans-serif;
+    }
+    #input-container, #candidate-container {
+      margin-top: 10px;
+    }
+    textarea, input[type="text"] {
+      width: 300px;
+    }
+    button {
+      margin-left: 10px;
+    }
+    #candidateList p {
+      cursor: pointer;
+      background-color: #f0f0f0;
+      padding: 5px;
+      margin: 5px 0;
+    }
+  </style>
+</head>
 <body>
+  <h1>RTC Transport - Cross Page</h1>
+  <p id="status">
+    Creating a RtcTransport instance for cross-page manual signalling. <br>
+  </p>
 
-<p id="status">
-  Creating a RtcTransport instance for cross-page manual signalling. <br>
-</p>
+  <div id="candidate-container">
+    <input type="text" id="candidate" placeholder="Paste remote candidate here"></input>
+    <button id="candidateButton">Add Candidate</button>
+  </div>
 
-<span id="candidateList"></span>
+  <div id="input-container">
+    <textarea id="input1" placeholder="Message to send"></textarea>
+    <button id="send1" disabled>Send</button>
+  </div>
 
-<input type="text" id="candidate"></input>
-<button id="candidateButton">AddCandidate</button>
-<br>
-<textarea id="input1"></textarea>
-<button id="send1" disabled>Send</button>
+  <h2>ICE Candidates:</h2>
+  <div id="candidateList"></div>
 
-<script src="main.js"></script>
+  <script src="main.js"></script>
 </body>
 </html>

@@ -1,14 +1,34 @@
 <html>
+<head>
+  <title>RTC Transport - Same Page</title>
+  <style>
+    body {
+      font-family: sans-serif;
+    }
+    #input-container {
+      margin-top: 10px;
+    }
+    textarea {
+      width: 300px;
+      height: 50px;
+    }
+    button {
+      margin-left: 10px;
+    }
+  </style>
+</head>
 <body>
+  <h1>RTC Transport - Same Page</h1>
+  <p id="status">
+    Creating two RtcTransport instances, transport1 and transport2, and passing ICE candidates between them... <br>
+  </p>
+  <div id="input-container">
+    <textarea id="input1" placeholder="Message to transport2"></textarea>
+    <button id="send1" disabled>Send 1->2</button>
+    <textarea id="input2" placeholder="Message to transport1"></textarea>
+    <button id="send2" disabled>Send 2->1</button>
+  </div>
 
-<p id="status">
-  Creating two RtcTransport instances, t1 and t2, and passing ICE candidates between them... <br>
-</p>
-<textarea id="input1"></textarea>
-<button id="send1" disabled>Send 1->2</button>
-<textarea id="input2"></textarea>
-<button id="send2" disabled>Send 2->1</button>
-
-<script src="main.js"></script>
+  <script src="main.js"></script>
 </body>
 </html>

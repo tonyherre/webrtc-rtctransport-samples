@@ -1,184 +1,256 @@
-let t1, t2;
-let statusEl = document.getElementById("status");
-let sendButton1 = document.getElementById("send1");
-let sendButton2 = document.getElementById("send2");
-let input1 = document.getElementById("input1");
-let input2 = document.getElementById("input2");
+// Configuration
+const CONFIG = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  video: {
+    width: 1280,
+    height: 960,
+    bitrate: 4_000_000,
+    framerate: 30,
+  },
+  codec: "vp8",
+  maxPacketSize: 1200,
+};
 
-let framerateEl = document.getElementById("framerates");
+// DOM Elements
+const statusEl = document.getElementById("status");
+const sendButton1 = document.getElementById("send1");
+const sendButton2 = document.getElementById("send2");
+const input1 = document.getElementById("input1");
+const input2 = document.getElementById("input2");
+const framerateEl = document.getElementById("framerates");
+const canvas = document.getElementById("canvas");
+const video = document.getElementById("video");
 
+// TextEncoder/Decoder
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 
-let enc = new TextEncoder();
-let dec = new TextDecoder();
+// Transports
+let transport1, transport2;
 
-function propagateCandidate(otherTransport, otherTransportName, event) {
-  console.log(`Candidate ${event.candidate}, username ${event.candidate.ufrag}`);
-  let candidate = event.candidate;
-  let address = candidate.address
-  let port = candidate.port
-  let type = candidate.type;
-  let foundation = "0";
-  let relatedAddress = "";
-  let relatedAddressPort = "";
-  let networkId = "0";
-  let candidateDict = {address, port, usernameFragment: candidate.usernameFragment, password: candidate.password, type, foundation, relatedAddress, relatedAddressPort, networkId};
-
-  console.log(`Adding remote candidate`, candidateDict);
-  otherTransport.addRemoteCandidate(candidateDict);
-    statusEl.innerText += `propagated candidate ${JSON.stringify(event.candidate)} to ${otherTransportName}\n`;
-}
-
-async function pollWritable(transport, name, sendButton) {
-  if (await transport.writable()) {
-    statusEl.innerText += name + " is now writable\n";
-    sendButton.disabled = false;
-    if (name == "t1") setupMedia();
-  } else {
-    setTimeout(() => pollWritable(transport, name, sendButton), 100);
-  }
-}
-
+// Video processing
+let decoder;
 let pendingPackets = [];
+let renderedFrames = 0;
+let frameCounter = 0;
+let droppedFrames = 0;
+let startTime;
 
-async function pollReceivedPackets(transport, name) {
-  let packets = transport.getReceivedPackets();
-  packets.forEach((packet) => {
-    pendingPackets.push(packet.data);
-  });
-  if (packets.length > 0) {
-    decodeAvailableFrames();
-  }
-  setTimeout(() => pollReceivedPackets(transport, name), 5);
+/**
+ * Updates the status element with a new message.
+ * @param {string} message - The message to display.
+ */
+function updateStatus(message) {
+  statusEl.innerText += message + "\n";
 }
 
+/**
+ * Sends an ICE candidate to the peer transport.
+ * @param {RtcTransport} peerTransport - The peer transport.
+ * @param {string} peerTransportName - The name of the peer transport.
+ * @param {Event} event - The ICE candidate event.
+ */
+function sendCandidateToPeer(peerTransport, peerTransportName, event) {
+  if (event.candidate) {
+    console.log(`Sending candidate to ${peerTransportName}:`, event.candidate);
+    peerTransport.addRemoteCandidate(event.candidate);
+    updateStatus(`Sent candidate to ${peerTransportName}`);
+  }
+}
 
-let params = new URLSearchParams(document.location.search);
-let protocol = params.get("protocol");
-t1 = new RtcTransport({name:"myTransport1", iceServers: [{urls: "stun:stun.l.google.com:19302"}], iceControlling: true, wireProtocol: protocol, });
-t2 = new RtcTransport({name:"myTransport2", iceServers: [{urls: "stun:stun.l.google.com:19302"}], iceControlling: false, wireProtocol: protocol, });
+/**
+ * Polls a transport until it becomes writable.
+ * @param {RtcTransport} transport - The transport to poll.
+ * @param {string} transportName - The name of the transport.
+ * @param {HTMLButtonElement} sendButton - The send button associated with the transport.
+ */
+async function pollWritable(transport, transportName, sendButton) {
+  while (!await transport.writable()) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  updateStatus(`${transportName} is now writable`);
+  sendButton.disabled = false;
+  if (transportName === "transport1") {
+    setupMedia();
+  }
+}
 
-t2.setRemoteDtlsParameters({sslRole:"server", fingerprintDigestAlgorithm: t1.fingerprintDigestAlgorithm, fingerprint:t1.fingerprint});
-t1.setRemoteDtlsParameters({sslRole:"client", fingerprintDigestAlgorithm: t2.fingerprintDigestAlgorithm, fingerprint:t2.fingerprint});
+/**
+ * Polls a transport for received packets.
+ * @param {RtcTransport} transport - The transport to poll.
+ */
+async function pollReceivedPackets(transport) {
+  while (true) {
+    const packets = transport.getReceivedPackets();
+    if (packets.length > 0) {
+      packets.forEach(packet => pendingPackets.push(packet.data));
+      decodeAvailableFrames();
+    }
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+}
 
-t1.onicecandidate = (event) => {
-  propagateCandidate(t2, "t2", event);
-};
-t2.onicecandidate = (event) => {
-  propagateCandidate(t1, "t1", event);
-};
+/**
+ * Creates and configures an RtcTransport instance.
+ * @param {string} name - The name of the transport.
+ * @param {boolean} isControlling - Whether the transport is controlling.
+ * @returns {RtcTransport} The configured RtcTransport instance.
+ */
+function createTransport(name, isControlling) {
+  const protocol = new URLSearchParams(document.location.search).get("protocol");
+  return new RtcTransport({
+    name,
+    iceServers: CONFIG.iceServers,
+    iceControlling: isControlling,
+    wireProtocol: protocol,
+  });
+}
 
-pollWritable(t1, "t1", sendButton1);
-pollWritable(t2, "t2", sendButton2);
+/**
+ * Initializes the two RtcTransport instances and sets up their communication.
+ */
+function initializeTransports() {
+  transport1 = createTransport("myTransport1", true);
+  transport2 = createTransport("myTransport2", false);
 
-sendButton1.onclick = async () => {
-  t1.sendPackets([{data: enc.encode(input1.value).buffer}]);
-};
-input1.addEventListener("keypress", e => { if (e.key === "Enter") {sendButton1.click(); e.preventDefault();}});
+  transport1.onicecandidate = (event) => sendCandidateToPeer(transport2, "transport2", event);
+  transport2.onicecandidate = (event) => sendCandidateToPeer(transport1, "transport1", event);
 
-sendButton2.onclick = async () => {
-  t2.sendPackets([{data: enc.encode(input2.value).buffer}]);
-};
-input2.addEventListener("keypress", e => { if (e.key === "Enter") {sendButton2.click();  e.preventDefault();}});
+  transport2.setRemoteDtlsParameters({
+    sslRole: "server",
+    fingerprintDigestAlgorithm: transport1.fingerprintDigestAlgorithm,
+    fingerprint: transport1.fingerprint,
+  });
+  transport1.setRemoteDtlsParameters({
+    sslRole: "client",
+    fingerprintDigestAlgorithm: transport2.fingerprintDigestAlgorithm,
+    fingerprint: transport2.fingerprint,
+  });
 
+  pollWritable(transport1, "transport1", sendButton1);
+  pollWritable(transport2, "transport2", sendButton2);
 
-pollReceivedPackets(t1, "t1");
-pollReceivedPackets(t2, "t2");
+  pollReceivedPackets(transport1);
+  pollReceivedPackets(transport2);
+}
 
+/**
+ * Sets up the event listeners for the send buttons and input fields.
+ */
+function setupUI() {
+  sendButton1.onclick = () => {
+    transport1.sendPackets([{ data: textEncoder.encode(input1.value).buffer }]);
+    input1.value = "";
+  };
+  input1.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      sendButton1.click();
+      e.preventDefault();
+    }
+  });
 
-function handleEncodedChunk(chunk, metadata) {
-  // actual bytes of encoded data
+  sendButton2.onclick = () => {
+    transport2.sendPackets([{ data: textEncoder.encode(input2.value).buffer }]);
+    input2.value = "";
+  };
+  input2.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      sendButton2.click();
+      e.preventDefault();
+    }
+  });
+}
+
+/**
+ * Handles an encoded video chunk.
+ * @param {EncodedVideoChunk} chunk - The encoded video chunk.
+ */
+function handleEncodedChunk(chunk) {
   const chunkData = new Uint8Array(chunk.byteLength);
   chunk.copyTo(chunkData);
 
-  let packets = [];
-
-  // Split chunk until individual 1200 byte array buffers
-  const maxPacketSize = 1200; // A common MTU for WebRTC is 1200 bytes
-  for (let i = 0; i < chunkData.byteLength; i += maxPacketSize) {
-    const end = Math.min(i + maxPacketSize, chunkData.byteLength);
-    let packet = new ArrayBuffer(end - i + 2);
-    new Uint8Array(packet)[0] = end == chunkData.byteLength ? 1 : 0;
-    new Uint8Array(packet)[1] = chunk.type == "key" ? 1 : 0;
-    new Uint8Array(packet).set(chunkData.slice(i, end), 2);
-
+  const packets = [];
+  for (let i = 0; i < chunkData.byteLength; i += CONFIG.maxPacketSize) {
+    const end = Math.min(i + CONFIG.maxPacketSize, chunkData.byteLength);
+    const packet = new ArrayBuffer(end - i + 2);
+    const packetView = new Uint8Array(packet);
+    packetView[0] = end === chunkData.byteLength ? 1 : 0;
+    packetView[1] = chunk.type === "key" ? 1 : 0;
+    packetView.set(chunkData.slice(i, end), 2);
     packets.push({ data: packet });
   }
 
-  t1.sendPackets(packets);
+  transport1.sendPackets(packets);
 }
 
+/**
+ * Creates a new VideoEncoder.
+ * @returns {VideoEncoder} The configured VideoEncoder.
+ */
 function createEncoder() {
-  const init = {
+  const encoder = new VideoEncoder({
     output: handleEncodedChunk,
-    error: (e) => {
-      console.log(e.message);
-    },
-  };
-
-  const config = {
-    codec: "vp8",
-    width: 1280,
-    height: 960,
-    bitrate: 4_000_000, // 1 Mbps
-    framerate: 30,
-  };
-
-  const encoder = new VideoEncoder(init);
-  encoder.configure(config);
+    error: (e) => console.error(e.message),
+  });
+  encoder.configure({
+    codec: CONFIG.codec,
+    width: CONFIG.video.width,
+    height: CONFIG.video.height,
+    bitrate: CONFIG.video.bitrate,
+    framerate: CONFIG.video.framerate,
+  });
   return encoder;
 }
 
-const canvas = document.getElementById("canvas");
-canvas.width = 1280;
-canvas.height = 960;
-const ctx = canvas.getContext("2d");
-
-let renderedFrames = 0;
+/**
+ * Handles a decoded video frame.
+ * @param {VideoFrame} frame - The decoded video frame.
+ */
 function handleDecodedFrame(frame) {
   renderedFrames++;
+  const ctx = canvas.getContext("2d");
   ctx.drawImage(frame, 0, 0);
   frame.close();
 }
 
+/**
+ * Creates a new VideoDecoder.
+ * @returns {VideoDecoder} The configured VideoDecoder.
+ */
 function createDecoder() {
-  const init = {
+  const decoder = new VideoDecoder({
     output: handleDecodedFrame,
-    error: (e) => {
-      console.log(e.message);
-    },
-  };
-
-  const config = {
-    codec: "vp8",
-    codedWidth: 1280,
-    codedHeight: 960,
-  };
-
-  const decoder = new VideoDecoder(init);
-  decoder.configure(config);
+    error: (e) => console.error(e.message),
+  });
+  decoder.configure({
+    codec: CONFIG.codec,
+    codedWidth: CONFIG.video.width,
+    codedHeight: CONFIG.video.height,
+  });
   return decoder;
 }
 
-let decoder = createDecoder();
-
-let timestamp = 0;
+/**
+ * Decodes available frames from the pending packets.
+ */
 function decodeAvailableFrames() {
   let framePackets = [];
   let encodedFrameSize = 0;
+  let timestamp = 0;
+
   while (pendingPackets.length > 0) {
-    let packet = new Uint8Array(pendingPackets.shift());
+    const packet = new Uint8Array(pendingPackets.shift());
     framePackets.push(packet);
-    encodedFrameSize += packet.byteLength;
-    if (packet[0] == 1) {
-      // Assembled a full frame.
-      let encodedFrame = new Uint8Array(encodedFrameSize);
+    encodedFrameSize += packet.byteLength - 2;
+
+    if (packet[0] === 1) {
+      const encodedFrame = new Uint8Array(encodedFrameSize);
       let offset = 0;
-      let isKeyFrame = packet[1] == 1;
-      framePackets.forEach((packet) => {
-        // Remove the header bits.
-        packet = packet.slice(2);
-        encodedFrame.set(packet, offset);
-        offset += packet.length;
+      const isKeyFrame = packet[1] === 1;
+
+      framePackets.forEach((p) => {
+        encodedFrame.set(p.slice(2), offset);
+        offset += p.length - 2;
       });
 
       const chunk = new EncodedVideoChunk({
@@ -189,36 +261,65 @@ function decodeAvailableFrames() {
       decoder.decode(chunk);
 
       framePackets = [];
+      encodedFrameSize = 0;
     }
   }
   pendingPackets = framePackets;
 }
 
-
-let frameCounter = 0;
-let droppedFrames = 0;
-let start = performance.now();
+/**
+ * Sets up the media stream and processing pipeline.
+ */
 async function setupMedia() {
-  let track = (await navigator.mediaDevices.getUserMedia({ video: {width: 1280, height: 960}})).getTracks()[0];
-  let video = document.getElementById("video");
-  video.srcObject = new MediaStream([track]);
-  video.play();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: CONFIG.video.width, height: CONFIG.video.height },
+    });
+    video.srcObject = stream;
+    video.play();
 
-  let processor = new MediaStreamTrackProcessor(track);
-  let encoder = createEncoder()
-  for await (const frame of processor.readable) {
-    if (encoder.encodeQueueSize > 2) {
-      // Too many frames in flight, encoder is overwhelmed
-      // let's drop this frame.
-      frame.close();
-      droppedFrames++;
-    } else {
-      frameCounter++;
-      const keyFrame = frameCounter % 150 == 0;
-      encoder.encode(frame, { keyFrame });
-      frame.close();
+    const track = stream.getTracks()[0];
+    const processor = new MediaStreamTrackProcessor(track);
+    const encoder = createEncoder();
+    startTime = performance.now();
+
+    for await (const frame of processor.readable) {
+      if (encoder.encodeQueueSize > 2) {
+        frame.close();
+        droppedFrames++;
+      } else {
+        frameCounter++;
+        const keyFrame = frameCounter % 150 === 0;
+        encoder.encode(frame, { keyFrame });
+        frame.close();
+      }
+      updateFramerate();
     }
-    framerateEl.innerText = `Frames: ${frameCounter} Dropped: ${droppedFrames}, framerate: ${ Math.round(frameCounter / ((performance.now() - start) / 1000))}, render framerate: ${Math.round(renderedFrames / ((performance.now() - start) / 1000))}`;
-
+  } catch (error) {
+    console.error("Error setting up media:", error);
+    updateStatus("Error setting up media. Check console for details.");
   }
 }
+
+/**
+ * Updates the framerate display.
+ */
+function updateFramerate() {
+  const elapsedTime = (performance.now() - startTime) / 1000;
+  const framerate = Math.round(frameCounter / elapsedTime);
+  const renderFramerate = Math.round(renderedFrames / elapsedTime);
+  framerateEl.innerText = `Frames: ${frameCounter} Dropped: ${droppedFrames}, Framerate: ${framerate}, Render Framerate: ${renderFramerate}`;
+}
+
+/**
+ * Initializes the application.
+ */
+function main() {
+  canvas.width = CONFIG.video.width;
+  canvas.height = CONFIG.video.height;
+  decoder = createDecoder();
+  initializeTransports();
+  setupUI();
+}
+
+main();

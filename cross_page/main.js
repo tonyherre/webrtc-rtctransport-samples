@@ -1,80 +1,135 @@
+// Configuration
+const CONFIG = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+};
+
+// DOM Elements
+const statusEl = document.getElementById("status");
+const sendButton = document.getElementById("send1");
+const input = document.getElementById("input1");
+const candidateInput = document.getElementById("candidate");
+const candidateButton = document.getElementById("candidateButton");
+const candidateList = document.getElementById("candidateList");
+
+// TextEncoder/Decoder
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+// Transport
 let transport;
-let statusEl = document.getElementById("status");
-let sendButton = document.getElementById("send1");
-let input = document.getElementById("input1");
 
-let candidateInput = document.getElementById("candidate");
-let candidateButton = document.getElementById("candidateButton");
+/**
+ * Updates the status element with a new message.
+ * @param {string} message - The message to display.
+ */
+function updateStatus(message) {
+  statusEl.innerText += message + "\n";
+}
 
-
-let enc = new TextEncoder();
-let dec = new TextDecoder();
-
-function propagateCandidate(event) {
-  console.log(`Candidate ${event.candidate.candidate}, username ${event.candidate.usernameFragment}`);
-  let candidate = event.candidate.candidate;
-  let candidateParts = candidate.split(" ");
-  let address = candidate.slice(0, candidateParts[0].lastIndexOf(':'));
-  let port = parseInt(candidate.slice(candidateParts[0].lastIndexOf(':')+1));
-  let type = candidateParts[1];
-  let foundation = candidateParts[2];
-  let relatedAddress = candidateParts[3] ? candidateParts[3].slice(0, candidateParts[3].lastIndexOf(':')) : "127.0.0.1";
-  let relatedAddressPort = candidateParts[3] ? parseInt(candidateParts[3].slice(candidateParts[3].lastIndexOf(':')+1)) : "0";
-  let networkId = candidateParts[4];
-  let priority = candidateParts[5];
-  let usernamePassword = event.candidate.usernameFragment.split(" ");
-  let candidateDict = {address, port, usernameFragment: usernamePassword[0], password: usernamePassword[1], type, foundation, relatedAddress, relatedAddressPort, networkId, priority};
-
-  console.log(`Progate remote candidate: `, candidateDict);
-  let newEl = document.createElement("p");
-  newEl.innerText = JSON.stringify(candidateDict);
+/**
+ * Displays a new ICE candidate in the UI.
+ * @param {RTCIceCandidate} candidate - The ICE candidate.
+ */
+function displayCandidate(candidate) {
+  const candidateString = JSON.stringify(candidate);
+  const newEl = document.createElement("p");
+  newEl.innerText = candidateString;
   newEl.onclick = () => {
-    var range = document.createRange();
-    var selection = window.getSelection();
-    range.selectNodeContents(newEl);
-
-    selection.removeAllRanges();
-    selection.addRange(range);
+    navigator.clipboard.writeText(candidateString).then(() => {
+      updateStatus("Candidate copied to clipboard.");
+    }, () => {
+      updateStatus("Failed to copy candidate to clipboard.");
+    });
   };
-  document.getElementById("candidateList").appendChild(newEl);
+  candidateList.appendChild(newEl);
 }
 
-async function pollWritable(transport, name, sendButton) {
-  if (await transport.writable()) {
-    statusEl.innerText += name + " is now writable\n";
-    sendButton.disabled = false;
-  } else {
-    setTimeout(() => pollWritable(transport, name, sendButton), 100);
+/**
+ * Polls the transport until it becomes writable.
+ * @param {RtcTransport} transport - The transport to poll.
+ * @param {string} transportName - The name of the transport.
+ * @param {HTMLButtonElement} sendButton - The send button associated with the transport.
+ */
+async function pollWritable(transport, transportName, sendButton) {
+  while (!await transport.writable()) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  updateStatus(`${transportName} is now writable`);
+  sendButton.disabled = false;
+}
+
+/**
+ * Polls the transport for received packets.
+ * @param {RtcTransport} transport - The transport to poll.
+ * @param {string} transportName - The name of the transport.
+ */
+async function pollReceivedPackets(transport, transportName) {
+  while (true) {
+    const packets = transport.getReceivedPackets();
+    if (packets.length > 0) {
+      const message = textDecoder.decode(packets[0].data);
+      updateStatus(`${transportName} received a packet: ${message}`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
 }
 
-async function pollReceivedPackets(transport, name) {
-  let packets = transport.getReceivedPackets();
-  if (packets.length > 0) {
-    statusEl.innerText += name + " received a packet. Value: " + dec.decode(packets[0].data) + "\n";
-  }
-  setTimeout(() => pollReceivedPackets(transport, name), 100);
+/**
+ * Initializes the RtcTransport instance.
+ */
+function initializeTransport() {
+  const params = new URLSearchParams(document.location.search);
+  const isControlling = params.get("iceControlling") === 'true';
+
+  transport = new RtcTransport({
+    name: "myTransport1",
+    iceServers: CONFIG.iceServers,
+    iceControlling: isControlling,
+  });
+
+  transport.onicecandidate = (event) => {
+    if (event.candidate) {
+      displayCandidate(event.candidate);
+    }
+  };
+
+  pollWritable(transport, "transport", sendButton);
+  pollReceivedPackets(transport, "transport");
 }
 
-let params = new URLSearchParams(document.location.search);
+/**
+ * Sets up the event listeners for the UI elements.
+ */
+function setupUI() {
+  sendButton.onclick = () => {
+    transport.sendPackets([{ data: textEncoder.encode(input.value).buffer }]);
+    input.value = "";
+  };
+  input.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      sendButton.click();
+      e.preventDefault();
+    }
+  });
 
-console.log("Ice controlling: ", params.get("iceControlling") === 'true');
-transport = new RtcTransport({name:"myTransport1", iceServers: [{urls: "stun:stun.l.google.com:19302"}], iceControlling: params.get("iceControlling") === 'true'});
-
-transport.onicecandidate = (event) => {
-  propagateCandidate(event);
-};
-
-pollWritable(transport, "transport", sendButton);
-
-sendButton.onclick = async () => {
-  transport.sendPackets([{data: enc.encode(input.value).buffer}]);
-};
-input.addEventListener("keypress", e => { if (e.key === "Enter") {sendButton.click(); e.preventDefault();}});
-
-candidateButton.onclick = async () => {
-  let candidate = candidateInput.value;
-  transport.addRemoteCandidate(JSON.parse(candidate));
+  candidateButton.onclick = () => {
+    try {
+      const candidate = JSON.parse(candidateInput.value);
+      transport.addRemoteCandidate(candidate);
+      candidateInput.value = "";
+    } catch (error) {
+      updateStatus("Error parsing candidate. Please check the format.");
+      console.error("Error parsing candidate:", error);
+    }
+  };
 }
 
-pollReceivedPackets(transport, "transport");
+/**
+ * Initializes the application.
+ */
+function main() {
+  initializeTransport();
+  setupUI();
+}
+
+main();
