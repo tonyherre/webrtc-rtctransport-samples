@@ -24,6 +24,8 @@ let transport1, transport2;
 let decoder;
 let mediaTrack;
 let streamVersion = 0;
+let frameId = 0;
+const reassemblyBuffer = {};
 let pendingPackets = [];
 let renderedFrames = 0;
 let frameCounter = 0;
@@ -132,18 +134,24 @@ function initializeTransports() {
  * @param {EncodedVideoChunk} chunk - The encoded video chunk.
  */
 function handleEncodedChunk(chunk, version) {
+  frameId++;
   const chunkData = new Uint8Array(chunk.byteLength);
   chunk.copyTo(chunkData);
 
   const packets = [];
-  for (let i = 0; i < chunkData.byteLength; i += CONFIG.maxPacketSize) {
-    const end = Math.min(i + CONFIG.maxPacketSize, chunkData.byteLength);
-    const packet = new ArrayBuffer(end - i + 3);
-    const packetView = new Uint8Array(packet);
-    packetView[0] = end === chunkData.byteLength ? 1 : 0;
-    packetView[1] = chunk.type === "key" ? 1 : 0;
-    packetView[2] = version;
-    packetView.set(chunkData.slice(i, end), 3);
+  const maxPayloadSize = CONFIG.maxPacketSize - 6; // 6 bytes for header
+  const numPackets = Math.ceil(chunkData.byteLength / maxPayloadSize);
+
+  for (let i = 0, packetSeq = 0; i < chunkData.byteLength; i += maxPayloadSize, packetSeq++) {
+    const end = Math.min(i + maxPayloadSize, chunkData.byteLength);
+    const packet = new ArrayBuffer(end - i + 6);
+    const packetView = new DataView(packet);
+    packetView.setUint8(0, version);
+    packetView.setUint8(1, chunk.type === "key" ? 1 : 0);
+    packetView.setUint16(2, frameId, false); // big-endian
+    packetView.setUint8(4, packetSeq);
+    packetView.setUint8(5, numPackets);
+    new Uint8Array(packet, 6).set(chunkData.slice(i, end));
     packets.push({ data: packet });
   }
 
@@ -201,45 +209,57 @@ function createDecoder() {
  * Decodes available frames from the pending packets.
  */
 function decodeAvailableFrames() {
-  let framePackets = [];
-  let encodedFrameSize = 0;
-  let timestamp = 0;
-
   while (pendingPackets.length > 0) {
-    const packet = new Uint8Array(pendingPackets.shift());
-    framePackets.push(packet);
-    encodedFrameSize += packet.byteLength - 3;
+    const packet = pendingPackets.shift();
+    const packetView = new DataView(packet);
+    const version = packetView.getUint8(0);
 
-    if (packet[0] === 1) {
-      const packetVersion = packet[2];
-      if (packetVersion !== streamVersion) {
-        // This frame is from an old stream, discard it
-        framePackets = [];
-        encodedFrameSize = 0;
-        continue;
+    if (version !== streamVersion) {
+      // Old packet from a previous stream, discard
+      continue;
+    }
+
+    const isKeyFrame = packetView.getUint8(1) === 1;
+    const frameId = packetView.getUint16(2, false);
+    const packetSeq = packetView.getUint8(4);
+    const numPackets = packetView.getUint8(5);
+    const data = new Uint8Array(packet, 6);
+
+    if (!reassemblyBuffer[frameId]) {
+      reassemblyBuffer[frameId] = {
+        packets: new Array(numPackets),
+        numPackets: numPackets,
+        isKeyFrame: isKeyFrame,
+        receivedCount: 0,
+      };
+    }
+
+    if (!reassemblyBuffer[frameId].packets[packetSeq]) {
+      reassemblyBuffer[frameId].receivedCount++;
+    }
+    reassemblyBuffer[frameId].packets[packetSeq] = data;
+
+    if (reassemblyBuffer[frameId].receivedCount === numPackets) {
+      // We have a full frame, let's assemble and decode
+      const framePackets = reassemblyBuffer[frameId].packets;
+      const totalSize = framePackets.reduce((acc, p) => acc + p.byteLength, 0);
+      const encodedFrame = new Uint8Array(totalSize);
+      let offset = 0;
+      for (const p of framePackets) {
+        encodedFrame.set(p, offset);
+        offset += p.length;
       }
 
-      const encodedFrame = new Uint8Array(encodedFrameSize);
-      let offset = 0;
-      const isKeyFrame = packet[1] === 1;
-
-      framePackets.forEach((p) => {
-        encodedFrame.set(p.slice(3), offset);
-        offset += p.length - 3;
-      });
-
       const chunk = new EncodedVideoChunk({
-        timestamp: timestamp++,
-        type: isKeyFrame ? "key" : "delta",
+        timestamp: frameId,
+        type: reassemblyBuffer[frameId].isKeyFrame ? "key" : "delta",
         data: encodedFrame,
       });
       decoder.decode(chunk);
 
-      framePackets = [];
-      encodedFrameSize = 0;
+      delete reassemblyBuffer[frameId];
     }
   }
-  pendingPackets = framePackets;
 }
 
 /**
@@ -316,6 +336,9 @@ function main() {
     renderedFrames = 0;
     droppedFrames = 0;
     pendingPackets = [];
+    for (const key in reassemblyBuffer) {
+      delete reassemblyBuffer[key];
+    }
 
     // Restart media with new resolution
     // Note: This will request camera access again.
