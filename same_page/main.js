@@ -10,22 +10,20 @@ let enc = new TextEncoder();
 let dec = new TextDecoder();
 
 function propagateCandidate(otherTransport, otherTransportName, event) {
-  console.log(`Candidate ${event.candidate.candidate}, username ${event.candidate.usernameFragment}`);
-  let candidate = event.candidate.candidate;
-  let candidateParts = candidate.split(" ");
-  let address = candidate.slice(0, candidateParts[0].lastIndexOf(':'));
-  let port = parseInt(candidate.slice(candidateParts[0].lastIndexOf(':')+1));
-  let type = candidateParts[1];
-  let foundation = candidateParts[2];
-  let relatedAddress = candidateParts[3] ? candidateParts[3].slice(0, candidateParts[3].lastIndexOf(':')) : "127.0.0.1";
-  let relatedAddressPort = candidateParts[3] ? parseInt(candidateParts[3].slice(candidateParts[3].lastIndexOf(':')+1)) : "0";
-  let networkId = candidateParts[4];
-  let usernamePassword = event.candidate.usernameFragment.split(" ");
-  let candidateDict = {address, port, usernameFragment: usernamePassword[0], password: usernamePassword[1], type, foundation, relatedAddress, relatedAddressPort, networkId};
+  console.log(`Candidate ${event.candidate}, username ${event.candidate.ufrag}`);
+  let candidate = event.candidate;
+  let address = candidate.address
+  let port = candidate.port
+  let type = candidate.type;
+  let foundation = "0";
+  let relatedAddress = "";
+  let relatedAddressPort = "";
+  let networkId = "0";
+  let candidateDict = {address, port, usernameFragment: candidate.usernameFragment, password: candidate.password, type, foundation, relatedAddress, relatedAddressPort, networkId};
 
   console.log(`Adding remote candidate`, candidateDict);
   otherTransport.addRemoteCandidate(candidateDict);
-    statusEl.innerText += `propagated candidate ${event.candidate.candidate} to ${otherTransportName}\n`;
+    statusEl.innerText += `propagated candidate ${JSON.stringify(event.candidate)} to ${otherTransportName}\n`;
 }
 
 async function pollWritable(transport, name, sendButton) {
@@ -45,8 +43,11 @@ async function pollReceivedPackets(transport, name) {
   setTimeout(() => pollReceivedPackets(transport, name), 100);
 }
 
-t1 = new RtcTransport({name:"myTransport1", iceServers: [{urls: "stun:stun.l.google.com:19302"}], iceControlling: true});
-t2 = new RtcTransport({name:"myTransport2", iceServers: [{urls: "stun:stun.l.google.com:19302"}], iceControlling: false});
+
+let params = new URLSearchParams(document.location.search);
+let protocol = params.get("protocol");
+t1 = new RtcTransport({name:"myTransport1", iceServers: [{urls: "stun:stun.l.google.com:19302"}], iceControlling: true, wireProtocol: protocol, });
+t2 = new RtcTransport({name:"myTransport2", iceServers: [{urls: "stun:stun.l.google.com:19302"}], iceControlling: false, wireProtocol: protocol, });
 
 t2.setRemoteDtlsParameters({sslRole:"server", fingerprintDigestAlgorithm: t1.fingerprintDigestAlgorithm, fingerprint:t1.fingerprint});
 t1.setRemoteDtlsParameters({sslRole:"client", fingerprintDigestAlgorithm: t2.fingerprintDigestAlgorithm, fingerprint:t2.fingerprint});
