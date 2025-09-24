@@ -2,9 +2,9 @@
 const CONFIG = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   video: {
-    width: 1280,
-    height: 960,
-    bitrate: 4_000_000,
+    width: 640,
+    height: 480,
+    bitrate: 2_000_000,
     framerate: 30,
   },
   codec: "vp8",
@@ -15,7 +15,7 @@ const CONFIG = {
 const statusEl = document.getElementById("status");
 const framerateEl = document.getElementById("framerates");
 const canvas = document.getElementById("canvas");
-const video = document.getElementById("video");
+const resolutionSelect = document.getElementById("resolution");
 
 // Transports
 let transport1, transport2;
@@ -239,8 +239,6 @@ async function setupMedia() {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { width: CONFIG.video.width, height: CONFIG.video.height },
     });
-    video.srcObject = stream;
-    video.play();
 
     const track = stream.getTracks()[0];
     const processor = new MediaStreamTrackProcessor(track);
@@ -283,6 +281,14 @@ function main() {
   canvas.height = CONFIG.video.height;
   decoder = createDecoder();
   initializeTransports();
+  resolutionSelect.onchange = () => {
+    const [width, height] = resolutionSelect.value.split('x');
+    CONFIG.video.width = parseInt(width, 10);
+    CONFIG.video.height = parseInt(height, 10);
+    // Restart media with new resolution
+    // Note: This will request camera access again.
+    setupMedia();
+  };
 }
 
 main();

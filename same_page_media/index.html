@@ -30,8 +30,15 @@
     Creating two RtcTransport instances, transport1 and transport2, and passing ICE candidates between them... <br>
   </p>
   <div id="container">
-    <video id="video" autoplay muted></video>
     <canvas id="canvas"></canvas>
+  </div>
+  <div id="resolution-container">
+    <label for="resolution">Resolution:</label>
+    <select id="resolution">
+      <option value="640x480">640x480</option>
+      <option value="1280x720">1280x720</option>
+      <option value="1920x1080">1920x1080</option>
+    </select>
   </div>
   <p id="framerates"></p>
 
