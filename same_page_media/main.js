@@ -13,17 +13,9 @@ const CONFIG = {
 
 // DOM Elements
 const statusEl = document.getElementById("status");
-const sendButton1 = document.getElementById("send1");
-const sendButton2 = document.getElementById("send2");
-const input1 = document.getElementById("input1");
-const input2 = document.getElementById("input2");
 const framerateEl = document.getElementById("framerates");
 const canvas = document.getElementById("canvas");
 const video = document.getElementById("video");
-
-// TextEncoder/Decoder
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
 
 // Transports
 let transport1, transport2;
@@ -64,12 +56,11 @@ function sendCandidateToPeer(peerTransport, peerTransportName, event) {
  * @param {string} transportName - The name of the transport.
  * @param {HTMLButtonElement} sendButton - The send button associated with the transport.
  */
-async function pollWritable(transport, transportName, sendButton) {
+async function pollWritable(transport, transportName) {
   while (!await transport.writable()) {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   updateStatus(`${transportName} is now writable`);
-  sendButton.disabled = false;
   if (transportName === "transport1") {
     setupMedia();
   }
@@ -127,38 +118,11 @@ function initializeTransports() {
     fingerprint: transport2.fingerprint,
   });
 
-  pollWritable(transport1, "transport1", sendButton1);
-  pollWritable(transport2, "transport2", sendButton2);
+  pollWritable(transport1, "transport1");
+  pollWritable(transport2, "transport2");
 
   pollReceivedPackets(transport1);
   pollReceivedPackets(transport2);
-}
-
-/**
- * Sets up the event listeners for the send buttons and input fields.
- */
-function setupUI() {
-  sendButton1.onclick = () => {
-    transport1.sendPackets([{ data: textEncoder.encode(input1.value).buffer }]);
-    input1.value = "";
-  };
-  input1.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
-      sendButton1.click();
-      e.preventDefault();
-    }
-  });
-
-  sendButton2.onclick = () => {
-    transport2.sendPackets([{ data: textEncoder.encode(input2.value).buffer }]);
-    input2.value = "";
-  };
-  input2.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
-      sendButton2.click();
-      e.preventDefault();
-    }
-  });
 }
 
 /**
@@ -319,7 +283,6 @@ function main() {
   canvas.height = CONFIG.video.height;
   decoder = createDecoder();
   initializeTransports();
-  setupUI();
 }
 
 main();
