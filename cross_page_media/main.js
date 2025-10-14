@@ -2,8 +2,8 @@
 const CONFIG = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   video: {
-    width: 640,
-    height: 480,
+    width: 1280,
+    height: 720,
     bitrate: 2_000_000,
     framerate: 30,
   },
@@ -20,7 +20,6 @@ const candidateButton = document.getElementById("candidateButton");
 const candidateList = document.getElementById("candidateList");
 const parametersEl = document.getElementById("parameters");
 const copyParamsButton = document.getElementById("copyParameters");
-const resolutionSelect = document.getElementById("resolution");
 const framerateEl = document.getElementById("framerates");
 
 // TextEncoder/Decoder
@@ -73,9 +72,10 @@ let frameId = 0;
 const reassemblyBuffer = {};
 let pendingPackets = [];
 let renderedFrames = 0;
-let frameCounter = 0;
+let sentFrameCounter = 0;
 let droppedFrames = 0;
 let startTime;
+let assembledFrameCounter = 0;
 
 /**
  * Polls the transport for received packets.
@@ -275,10 +275,6 @@ function decodeAvailableFrames() {
     const packetView = new DataView(packet);
     const version = packetView.getUint8(0);
 
-    if (version !== streamVersion) {
-      // Old packet from a previous stream, discard
-      continue;
-    }
 
     const isKeyFrame = packetView.getUint8(1) === 1;
     const frameId = packetView.getUint16(2, false);
@@ -310,7 +306,7 @@ function decodeAvailableFrames() {
         encodedFrame.set(p, offset);
         offset += p.length;
       }
-
+      assembledFrameCounter++;
       const chunk = new EncodedVideoChunk({
         timestamp: frameId,
         type: reassemblyBuffer[frameId].isKeyFrame ? "key" : "delta",
@@ -346,8 +342,8 @@ async function setupMedia() {
         frame.close();
         droppedFrames++;
       } else {
-        frameCounter++;
-        const keyFrame = isFirstFrame || (frameCounter % 150 === 0);
+        sentFrameCounter++;
+        const keyFrame = isFirstFrame || (sentFrameCounter % 150 === 0);
         isFirstFrame = false;
         encoder.encode(frame, { keyFrame });
         frame.close();
@@ -365,9 +361,9 @@ async function setupMedia() {
  */
 function updateFramerate() {
   const elapsedTime = (performance.now() - startTime) / 1000;
-  const framerate = Math.round(frameCounter / elapsedTime);
+  const framerate = Math.round(sentFrameCounter / elapsedTime);
   const renderFramerate = Math.round(renderedFrames / elapsedTime);
-  framerateEl.innerText = `Frames: ${frameCounter} Dropped: ${droppedFrames}, Framerate: ${framerate}, Render Framerate: ${renderFramerate}`;
+  framerateEl.innerText = `Frames sent: ${sentFrameCounter}, Frames assembled: ${assembledFrameCounter} Dropped: ${droppedFrames}, Framerate: ${framerate}, Render Framerate: ${renderFramerate}`;
 }
 
 
@@ -381,34 +377,6 @@ function main() {
   canvas.width = CONFIG.video.width;
   canvas.height = CONFIG.video.height;
   decoder = createDecoder();
-
-  resolutionSelect.onchange = () => {
-    const [width, height] = resolutionSelect.value.split('x');
-    CONFIG.video.width = parseInt(width, 10);
-    CONFIG.video.height = parseInt(height, 10);
-    streamVersion++;
-
-    // Re-configure canvas and decoder for new resolution
-    canvas.width = CONFIG.video.width;
-    canvas.height = CONFIG.video.height;
-    if (decoder) {
-      decoder.close();
-    }
-    decoder = createDecoder();
-
-    // Reset counters
-    frameCounter = 0;
-    renderedFrames = 0;
-    droppedFrames = 0;
-    pendingPackets = [];
-    for (const key in reassemblyBuffer) {
-      delete reassemblyBuffer[key];
-    }
-
-    // Restart media with new resolution
-    // Note: This will request camera access again.
-    setupMedia();
-  };
 }
 
 main();
