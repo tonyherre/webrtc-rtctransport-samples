@@ -4,6 +4,6 @@ This repository contains a set of examples that demonstrate how to use the `RtcT
 
 ## Examples
 
-*   [Same Page](same_page/README.md): This example demonstrates how to use the `RtcTransport` API to send and receive data between two transports on the same page.
-*   [Same Page Media](same_page_media/README.md): This example demonstrates how to use the `RtcTransport` API to send and receive video between two transports on the same page.
-*   [Cross Page](cross_page/README.md): This example demonstrates how to use the `RtcTransport` API to send and receive data between two different pages.
+*   [Same Page](same_page/): This example demonstrates how to use the `RtcTransport` API to send and receive data between two transports on the same page.
+*   [Same Page Media](same_page_media/): This example demonstrates how to use the `RtcTransport` API to send and receive video between two transports on the same page.
+*   [Cross Page](cross_page/): This example demonstrates how to use the `RtcTransport` API to send and receive data between two different pages.
