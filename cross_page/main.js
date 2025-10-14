@@ -11,6 +11,7 @@ const candidateInput = document.getElementById("candidate");
 const candidateButton = document.getElementById("candidateButton");
 const candidateList = document.getElementById("candidateList");
 const parametersEl = document.getElementById("parameters");
+const copyParamsButton = document.getElementById("copyParameters");
 
 // TextEncoder/Decoder
 const textEncoder = new TextEncoder();
@@ -18,6 +19,9 @@ const textDecoder = new TextDecoder();
 
 // Transport
 let transport;
+let controllingTransport, controlledTransport;
+
+const tiebreaker = Math.random();
 
 /**
  * Updates the status element with a new message.
@@ -27,28 +31,10 @@ function updateStatus(message) {
   statusEl.innerText += message + "\n";
 }
 
-let candidates = [];
-
-/**
- * Displays a new ICE candidate in the UI.
- * @param {RTCIceCandidate} candidate - The ICE candidate.
- */
-function displayCandidate(candidate) {
-  candidates.push(candidate);
-  /*
-  const candidateString = JSON.stringify(candidate);
-  const newEl = document.createElement("p");
-  newEl.innerText = candidateString;
-  newEl.onclick = () => {
-    navigator.clipboard.writeText(candidateString).then(() => {
-      updateStatus("Candidate copied to clipboard.");
-    }, () => {
-      updateStatus("Failed to copy candidate to clipboard.");
-    });
-  };
-  candidateList.appendChild(newEl);
-  */
-}
+let candidates = {
+  controlling: [],
+  controlled: [],
+};
 
 /**
  * Polls the transport until it becomes writable.
@@ -62,6 +48,9 @@ async function pollWritable(transport, transportName, sendButton) {
   }
   updateStatus(`${transportName} is now writable`);
   sendButton.disabled = false;
+  candidateButton.disabled = true;
+  candidateInput.disabled = true;
+  copyParamsButton.disabled = true;
 }
 
 /**
@@ -85,37 +74,51 @@ async function pollReceivedPackets(transport, transportName) {
  */
 function initializeTransport() {
   const params = new URLSearchParams(document.location.search);
-  const isControlling = params.get("iceControlling") === 'true';
-
-  transport = new RtcTransport({
+  controlledTransport = new RtcTransport({
     name: "myTransport1",
     iceServers: CONFIG.iceServers,
-    iceControlling: isControlling,
+    iceControlling: false,
+  });
+  controllingTransport = new RtcTransport({
+    name: "myTransport1",
+    iceServers: CONFIG.iceServers,
+    iceControlling: true,
   });
 
-  transport.onicecandidate = (event) => {
+  controlledTransport.onicecandidate = (event) => {
     if (event.candidate) {
-      displayCandidate(event.candidate);
+      candidates.controlled.push(event.candidate);
+    }
+  };
+
+  controllingTransport.onicecandidate = (event) => {
+    if (event.candidate) {
+      candidates.controlling.push(event.candidate);
     }
   };
 
   const dtlsParameters = {
-    sslRole: isControlling ? "client" : "server",
-    fingerprintDigestAlgorithm: transport.fingerprintDigestAlgorithm,
-    fingerprint: Array.from(new Uint8Array(transport.fingerprint)),
+    controlling: {
+      sslRole: "client",
+      fingerprintDigestAlgorithm: controllingTransport.fingerprintDigestAlgorithm,
+      fingerprint: Array.from(new Uint8Array(controllingTransport.fingerprint)),
+    },
+    controlled: {
+      sslRole: "server",
+      fingerprintDigestAlgorithm: controlledTransport.fingerprintDigestAlgorithm,
+      fingerprint: Array.from(new Uint8Array(controlledTransport.fingerprint)),
+    },
   };
   
-  document.getElementById("copyParameters").onclick = () => {
+  copyParamsButton.onclick = () => {
     const negotiationData = {
       dtls: dtlsParameters,
-      candidates: candidates,
+      candidates,
+      tiebreaker,
     };
     navigator.clipboard.writeText(JSON.stringify(negotiationData));
     updateStatus("Negotiation data copied to clipboard.");
   };
-
-  pollWritable(transport, "transport", sendButton);
-  pollReceivedPackets(transport, "transport");
 }
 
 /**
@@ -143,17 +146,28 @@ function setupUI() {
   candidateButton.onclick = () => {
     try {
       const remoteData = JSON.parse(candidateInput.value);
-      if (remoteData.dtls) {
-        remoteData.dtls.fingerprint = new Uint8Array(remoteData.dtls.fingerprint).buffer;
-        transport.setRemoteDtlsParameters(remoteData.dtls);
-        remoteData.candidates.forEach(candidate => transport.addRemoteCandidate(candidate));
-      } else if (remoteData.sslRole) {
-        remoteData.fingerprint = new Uint8Array(remoteData.fingerprint).buffer;
-        transport.setRemoteDtlsParameters(remoteData);
+      let dtls, candidates;
+      if (tiebreaker > remoteData.tiebreaker) {
+        // We're controlling.
+        transport = controllingTransport;
+        dtls = remoteData.dtls.controlled;
+        candidates = remoteData.candidates.controlled;
+        updateStatus(`Acting as controller`);
       } else {
-        transport.addRemoteCandidate(remoteData);
+        // We're controlled.
+        transport = controlledTransport;
+        dtls = remoteData.dtls.controlling;
+        candidates = remoteData.candidates.controlling;
+        updateStatus(`Acting as controlled`);
       }
 
+      pollWritable(transport, "transport", sendButton);
+      pollReceivedPackets(transport, "transport");
+
+      dtls.fingerprint = new Uint8Array(dtls.fingerprint).buffer;
+      transport.setRemoteDtlsParameters(dtls);
+      candidates.forEach(candidate => transport.addRemoteCandidate(candidate));
+      updateStatus(`Added remote parameters`);
       candidateInput.value = "";
     } catch (error) {
       updateStatus("Error parsing candidate. Please check the format.");
