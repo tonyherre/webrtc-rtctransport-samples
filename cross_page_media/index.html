@@ -1,0 +1,61 @@
+<html>
+<head>
+  <title>RTC Transport - Cross Page</title>
+  <style>
+    body {
+      font-family: sans-serif;
+    }
+    #input-container, #candidate-container {
+      margin-top: 10px;
+    }
+    textarea, input[type="text"] {
+      width: 300px;
+    }
+    button {
+      margin-left: 10px;
+    }
+    .list p {
+      cursor: pointer;
+      background-color: #f0f0f0;
+      padding: 5px;
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>RTC Transport - Cross Page</h1>
+  <p id="status">
+    Creating a RtcTransport instance for cross-page manual signalling. <br>
+  </p>
+
+  <br>
+  <button id="copyParameters">Copy local description to clipboard</button>
+  <br>
+  <div id="candidate-container">
+    <input type="text" id="candidate" placeholder="Paste remote negotation data here"></input>
+    <button id="candidateButton">Add remote description</button>
+  </div>
+
+  <div id="container">
+    <div>
+      <p>
+        Remote video:
+      </p>
+    </div>
+    <div>
+      <canvas id="canvas"></canvas>
+    </div>
+  </div>
+  <div id="resolution-container">
+    <label for="resolution">Local capture resolution:</label>
+    <select id="resolution">
+      <option value="640x480">640x480</option>
+      <option value="1280x720">1280x720</option>
+      <option value="1920x1080">1920x1080</option>
+    </select>
+  </div>
+  <p id="framerates"></p>
+
+  <script src="main.js"></script>
+</body>
+</html>
