@@ -6,7 +6,7 @@
       font-family: sans-serif;
     }
     #container {
-      display: flex;
+      margin-top: 40px;
     }
     #input-container {
       margin-top: 10px;
@@ -30,7 +30,14 @@
     Creating two RtcTransport instances, transport1 and transport2, and passing ICE candidates between them... <br>
   </p>
   <div id="container">
-    <canvas id="canvas"></canvas>
+    <div>
+      <p>
+        Loopback video, encoded & decoded by WebCodecs, rendered to a canvas:
+      </p>
+    </div>
+    <div>
+      <canvas id="canvas"></canvas>
+    </div>
   </div>
   <div id="resolution-container">
     <label for="resolution">Resolution:</label>
