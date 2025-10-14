@@ -14,7 +14,7 @@
     button {
       margin-left: 10px;
     }
-    #candidateList p {
+    .list p {
       cursor: pointer;
       background-color: #f0f0f0;
       padding: 5px;
@@ -28,9 +28,12 @@
     Creating a RtcTransport instance for cross-page manual signalling. <br>
   </p>
 
+  <br> 
+  <button id="copyParameters">Copy local description to clipboard</button>
+  <br>
   <div id="candidate-container">
-    <input type="text" id="candidate" placeholder="Paste remote candidate here"></input>
-    <button id="candidateButton">Add Candidate</button>
+    <input type="text" id="candidate" placeholder="Paste remote negotation data here"></input>
+    <button id="candidateButton">Add remote description</button>
   </div>
 
   <div id="input-container">
@@ -38,9 +41,12 @@
     <button id="send1" disabled>Send</button>
   </div>
 
+  <!--
+  <h2>DTLS Parameters</h2>
+  <div id="parameters" class="list"></div>
   <h2>ICE Candidates:</h2>
-  <div id="candidateList"></div>
-
+  <div id="candidateList" class="list"></div>
+  -->
   <script src="main.js"></script>
 </body>
 </html>

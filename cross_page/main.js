@@ -10,6 +10,7 @@ const input = document.getElementById("input1");
 const candidateInput = document.getElementById("candidate");
 const candidateButton = document.getElementById("candidateButton");
 const candidateList = document.getElementById("candidateList");
+const parametersEl = document.getElementById("parameters");
 
 // TextEncoder/Decoder
 const textEncoder = new TextEncoder();
@@ -26,11 +27,15 @@ function updateStatus(message) {
   statusEl.innerText += message + "\n";
 }
 
+let candidates = [];
+
 /**
  * Displays a new ICE candidate in the UI.
  * @param {RTCIceCandidate} candidate - The ICE candidate.
  */
 function displayCandidate(candidate) {
+  candidates.push(candidate);
+  /*
   const candidateString = JSON.stringify(candidate);
   const newEl = document.createElement("p");
   newEl.innerText = candidateString;
@@ -42,6 +47,7 @@ function displayCandidate(candidate) {
     });
   };
   candidateList.appendChild(newEl);
+  */
 }
 
 /**
@@ -93,6 +99,21 @@ function initializeTransport() {
     }
   };
 
+  const dtlsParameters = {
+    sslRole: isControlling ? "client" : "server",
+    fingerprintDigestAlgorithm: transport.fingerprintDigestAlgorithm,
+    fingerprint: Array.from(new Uint8Array(transport.fingerprint)),
+  };
+  
+  document.getElementById("copyParameters").onclick = () => {
+    const negotiationData = {
+      dtls: dtlsParameters,
+      candidates: candidates,
+    };
+    navigator.clipboard.writeText(JSON.stringify(negotiationData));
+    updateStatus("Negotiation data copied to clipboard.");
+  };
+
   pollWritable(transport, "transport", sendButton);
   pollReceivedPackets(transport, "transport");
 }
@@ -112,10 +133,27 @@ function setupUI() {
     }
   });
 
+  candidateInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      candidateButton.click();
+      e.preventDefault();
+    }
+  });
+
   candidateButton.onclick = () => {
     try {
-      const candidate = JSON.parse(candidateInput.value);
-      transport.addRemoteCandidate(candidate);
+      const remoteData = JSON.parse(candidateInput.value);
+      if (remoteData.dtls) {
+        remoteData.dtls.fingerprint = new Uint8Array(remoteData.dtls.fingerprint).buffer;
+        transport.setRemoteDtlsParameters(remoteData.dtls);
+        remoteData.candidates.forEach(candidate => transport.addRemoteCandidate(candidate));
+      } else if (remoteData.sslRole) {
+        remoteData.fingerprint = new Uint8Array(remoteData.fingerprint).buffer;
+        transport.setRemoteDtlsParameters(remoteData);
+      } else {
+        transport.addRemoteCandidate(remoteData);
+      }
+
       candidateInput.value = "";
     } catch (error) {
       updateStatus("Error parsing candidate. Please check the format.");
