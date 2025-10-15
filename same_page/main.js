@@ -76,7 +76,10 @@ async function pollReceivedPackets(transport, transportName) {
  * @returns {RtcTransport} The configured RtcTransport instance.
  */
 function createTransport(name, isControlling) {
-  const protocol = new URLSearchParams(document.location.search).get("protocol");
+  let protocol = new URLSearchParams(document.location.search).get("protocol");
+  if (!protocol) {
+    protocol = 'dtls-srtp';
+  }
   return new RtcTransport({
     name,
     iceServers: CONFIG.iceServers,

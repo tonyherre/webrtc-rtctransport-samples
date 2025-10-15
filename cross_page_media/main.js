@@ -21,6 +21,7 @@ const candidateList = document.getElementById("candidateList");
 const parametersEl = document.getElementById("parameters");
 const copyParamsButton = document.getElementById("copyParameters");
 const framerateEl = document.getElementById("framerates");
+const wireProtocolEl = document.getElementById("wireprotocol");
 
 // TextEncoder/Decoder
 const textEncoder = new TextEncoder();
@@ -102,11 +103,13 @@ function initializeTransport() {
     name: "myTransport1",
     iceServers: CONFIG.iceServers,
     iceControlling: false,
+    wireProtocol: wireProtocolEl.value,
   });
   controllingTransport = new RtcTransport({
     name: "myTransport1",
     iceServers: CONFIG.iceServers,
     iceControlling: true,
+    wireProtocol: wireProtocolEl.value,
   });
 
   controlledTransport.onicecandidate = (event) => {

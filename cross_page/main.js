@@ -78,11 +78,13 @@ function initializeTransport() {
     name: "myTransport1",
     iceServers: CONFIG.iceServers,
     iceControlling: false,
+    wireProtocol: 'dtls-srtp',
   });
   controllingTransport = new RtcTransport({
     name: "myTransport1",
     iceServers: CONFIG.iceServers,
     iceControlling: true,
+    wireProtocol: 'dtls-srtp',
   });
 
   controlledTransport.onicecandidate = (event) => {

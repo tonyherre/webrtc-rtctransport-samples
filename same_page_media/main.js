@@ -98,6 +98,7 @@ function createTransport(name, isControlling) {
     iceServers: CONFIG.iceServers,
     iceControlling: isControlling,
     wireProtocol: protocol,
+    wireProtocol: 'dtls-srtp',
   });
 }
 
