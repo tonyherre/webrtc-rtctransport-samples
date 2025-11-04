@@ -37,13 +37,13 @@ function initializeTransport() {
   controllingTransport = createTransport("myTransport1", true);
 
   controlledTransport.onicecandidate = (event) => {
-    if (event.candidate && event.candidate.type === "relay") {
+    if (event.candidate) {
       candidates.controlled.push(event.candidate);
     }
   };
 
   controllingTransport.onicecandidate = (event) => {
-    if (event.candidate && event.candidate.type === "relay") {
+    if (event.candidate) {
       candidates.controlling.push(event.candidate);
     }
   };
