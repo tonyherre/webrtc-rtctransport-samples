@@ -11,6 +11,8 @@ const CONFIG = {
   maxPacketSize: 1200,
 };
 
+let byob_support = RtcReceivedPacket && 'copyPayloadTo' in RtcReceivedPacket.prototype;
+
 // DOM Elements
 const statusEl = document.getElementById("status");
 const framerateEl = document.getElementById("framerates");
@@ -26,6 +28,10 @@ let mediaTrack;
 let streamVersion = 0;
 let frameId = 0;
 const reassemblyBuffer = {};
+const bufferPoolSize = 500;
+let bufferPool = byob_support ? [...Array(bufferPoolSize)].map(() => {
+  return new ArrayBuffer(CONFIG.maxPacketSize);
+}) : [];
 let pendingPackets = [];
 let renderedFrames = 0;
 let frameCounter = 0;
@@ -78,10 +84,19 @@ async function pollReceivedPackets(transport) {
   while (true) {
     const packets = transport.getReceivedPackets();
     if (packets.length > 0) {
-      packets.forEach(packet => pendingPackets.push(packet.data));
+      packets.forEach(packet => {
+        if (byob_support) {
+          let buffer = bufferPool.pop();
+          if (!buffer) console.log("Buffer pool empty?");
+          packet.copyPayloadTo(buffer);
+          pendingPackets.push(new Uint8Array(buffer, 0, packet.payloadByteLength));
+        } else {
+          pendingPackets.push(packet.data);
+        }
+      });
       decodeAvailableFrames();
     }
-    await new Promise(resolve => setTimeout(resolve, 5));
+    await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
 
@@ -140,23 +155,36 @@ function handleEncodedChunk(chunk, version) {
   chunk.copyTo(chunkData);
 
   const packets = [];
-  const maxPayloadSize = CONFIG.maxPacketSize - 6; // 6 bytes for header
+  const maxPayloadSize = CONFIG.maxPacketSize - 10; // 10 bytes for header
   const numPackets = Math.ceil(chunkData.byteLength / maxPayloadSize);
 
   for (let i = 0, packetSeq = 0; i < chunkData.byteLength; i += maxPayloadSize, packetSeq++) {
     const end = Math.min(i + maxPayloadSize, chunkData.byteLength);
-    const packet = new ArrayBuffer(end - i + 6);
-    const packetView = new DataView(packet);
+    const packet_length = end - i + 10;
+    let packet_buffer;
+    if (byob_support) {
+      packet_buffer = bufferPool.pop();
+      if (!packet_buffer) alert("Buffer pool empty");
+    } else {
+      packet_buffer = new ArrayBuffer(packet_length);
+    }
+    const packetView = new DataView(packet_buffer, 0, packet_length);
     packetView.setUint8(0, version);
     packetView.setUint8(1, chunk.type === "key" ? 1 : 0);
     packetView.setUint16(2, frameId, false); // big-endian
     packetView.setUint8(4, packetSeq);
     packetView.setUint8(5, numPackets);
-    new Uint8Array(packet, 6).set(chunkData.slice(i, end));
-    packets.push({ data: packet });
+    packetView.setUint32(6, chunk.timestamp);
+    new Uint8Array(packet_buffer, 10).set(chunkData.slice(i, end));
+    packets.push({ data: byob_support ? packetView : packet_buffer});
   }
 
   transport1.sendPackets(packets);
+  if (byob_support) {
+    packets.forEach(packet => {
+      bufferPool.push(packet.data.buffer);
+    });
+  }
 }
 
 /**
@@ -192,13 +220,9 @@ function handleDecodedFrame(frame) {
 /**
  * Creates a new VideoDecoder.
  * @returns {VideoDecoder} The configured VideoDecoder.
- */
-function createDecoder() {
-  const decoder = new VideoDecoder({
-    output: handleDecodedFrame,
-    error: (e) => console.error(e.message),
-  });
-  decoder.configure({
+ */ 
+async function createDecoder() {
+  const decoderConfig = {
     codec: CONFIG.codec,
     codedWidth: CONFIG.video.width,
     codedHeight: CONFIG.video.height,
@@ -212,7 +236,7 @@ function createDecoder() {
 function decodeAvailableFrames() {
   while (pendingPackets.length > 0) {
     const packet = pendingPackets.shift();
-    const packetView = new DataView(packet);
+    const packetView = new DataView(byob_support ? packet.buffer : packet);
     const version = packetView.getUint8(0);
 
     if (version !== streamVersion) {
@@ -224,7 +248,8 @@ function decodeAvailableFrames() {
     const frameId = packetView.getUint16(2, false);
     const packetSeq = packetView.getUint8(4);
     const numPackets = packetView.getUint8(5);
-    const data = new Uint8Array(packet, 6);
+    const timestamp = packetView.getUint32(6, false);
+    const data = new Uint8Array(byob_support ? packet.buffer : packet, 10, packet.byteLength - 10);
 
     if (!reassemblyBuffer[frameId]) {
       reassemblyBuffer[frameId] = {
@@ -232,6 +257,7 @@ function decodeAvailableFrames() {
         numPackets: numPackets,
         isKeyFrame: isKeyFrame,
         receivedCount: 0,
+        timestamp,
       };
     }
 
@@ -252,12 +278,17 @@ function decodeAvailableFrames() {
       }
 
       const chunk = new EncodedVideoChunk({
-        timestamp: frameId,
+        timestamp: reassemblyBuffer[frameId].timestamp,
         type: reassemblyBuffer[frameId].isKeyFrame ? "key" : "delta",
         data: encodedFrame,
       });
       decoder.decode(chunk);
 
+      if (byob_support) {
+        reassemblyBuffer[frameId].packets.forEach((p) => {
+          bufferPool.push(p.buffer);
+        });
+      }
       delete reassemblyBuffer[frameId];
     }
   }
@@ -292,7 +323,8 @@ async function setupMedia() {
         encoder.encode(frame, { keyFrame });
         frame.close();
       }
-      updateFramerate();
+      if (frameCounter %50 == 0)
+        updateFramerate();
     }
   } catch (error) {
     console.error("Error setting up media:", error);
@@ -314,6 +346,13 @@ function updateFramerate() {
  * Initializes the application.
  */
 function main() {
+  if (!RtcTransport) {
+    updateStatus("RtcTransport not supported on this browser. Be sure to run a recent Chromium Canary with --enable-blink-features=RTCRtpTransport.");
+    return;
+  }
+
+  updateStatus(byob_support ? "Using BYOB" : "BYOB Not supported");
+
   canvas.width = CONFIG.video.width;
   canvas.height = CONFIG.video.height;
   decoder = createDecoder();
