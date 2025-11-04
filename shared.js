@@ -15,6 +15,7 @@ let byob_support = typeof RtcReceivedPacket !== 'undefined' && RtcReceivedPacket
 
 // DOM Elements
 const statusEl = document.getElementById("status");
+const errorEl = document.getElementById("error");
 
 /**
  * Updates the status element with a new message.
@@ -22,6 +23,14 @@ const statusEl = document.getElementById("status");
  */
 function updateStatus(message) {
   statusEl.innerText += message + "\n";
+}
+
+/**
+ * Updates the error element with a new message.
+ * @param {string} message - The message to display.
+ */
+function updateError(message) {
+  errorEl.innerText += message + "\n";
 }
 
 /**

@@ -131,6 +131,10 @@ function setupUI() {
  * Initializes the application.
  */
 function main() {
+  if (!window['RtcTransport']) {
+    updateError("RtcTransport not supported on this browser. Be sure to run a recent Chromium Canary with --enable-blink-features=RTCRtpTransport.");
+    return;
+  }
   initializeTransport();
   setupUI();
 }

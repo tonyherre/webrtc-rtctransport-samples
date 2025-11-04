@@ -133,3 +133,7 @@ async function benchmark() {
     startBtn.toggleAttribute('disabled');
   }
 }
+
+if (!window['RtcTransport']) {
+  updateError("RtcTransport not supported on this browser. Be sure to run a recent Chromium Canary with --enable-blink-features=RTCRtpTransport.");
+}

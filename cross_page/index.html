@@ -20,6 +20,10 @@
       padding: 5px;
       margin: 5px 0;
     }
+    .error {
+      color: red;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -27,6 +31,7 @@
   <p id="status">
     Creating a RtcTransport instance for cross-page manual signalling. <br>
   </p>
+  <p id="error" class="error"></p>
 
   <br>
   <button id="copyParameters">Copy local description to clipboard</button>
