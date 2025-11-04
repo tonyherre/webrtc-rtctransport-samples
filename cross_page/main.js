@@ -1,16 +1,8 @@
-// Configuration
-const CONFIG = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
-
 // DOM Elements
-const statusEl = document.getElementById("status");
 const sendButton = document.getElementById("send1");
 const input = document.getElementById("input1");
 const candidateInput = document.getElementById("candidate");
 const candidateButton = document.getElementById("candidateButton");
-const candidateList = document.getElementById("candidateList");
-const parametersEl = document.getElementById("parameters");
 const copyParamsButton = document.getElementById("copyParameters");
 
 // TextEncoder/Decoder
@@ -23,69 +15,18 @@ let controllingTransport, controlledTransport;
 
 const tiebreaker = Math.random();
 
-/**
- * Updates the status element with a new message.
- * @param {string} message - The message to display.
- */
-function updateStatus(message) {
-  statusEl.innerText += message + "\n";
-}
-
 let candidates = {
   controlling: [],
   controlled: [],
 };
 
 /**
- * Polls the transport until it becomes writable.
- * @param {RtcTransport} transport - The transport to poll.
- * @param {string} transportName - The name of the transport.
- * @param {HTMLButtonElement} sendButton - The send button associated with the transport.
- */
-async function pollWritable(transport, transportName, sendButton) {
-  while (!await transport.writable()) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  updateStatus(`${transportName} is now writable`);
-  sendButton.disabled = false;
-  candidateButton.disabled = true;
-  candidateInput.disabled = true;
-  copyParamsButton.disabled = true;
-}
-
-/**
- * Polls the transport for received packets.
- * @param {RtcTransport} transport - The transport to poll.
- * @param {string} transportName - The name of the transport.
- */
-async function pollReceivedPackets(transport, transportName) {
-  while (true) {
-    const packets = transport.getReceivedPackets();
-    if (packets.length > 0) {
-      const message = textDecoder.decode(packets[0].data);
-      updateStatus(`${transportName} received a packet: ${message}`);
-    }
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-}
-
-/**
  * Initializes the RtcTransport instance.
  */
 function initializeTransport() {
   const params = new URLSearchParams(document.location.search);
-  controlledTransport = new RtcTransport({
-    name: "myTransport1",
-    iceServers: CONFIG.iceServers,
-    iceControlling: false,
-    wireProtocol: 'dtls-srtp',
-  });
-  controllingTransport = new RtcTransport({
-    name: "myTransport1",
-    iceServers: CONFIG.iceServers,
-    iceControlling: true,
-    wireProtocol: 'dtls-srtp',
-  });
+  controlledTransport = createTransport("myTransport1", false);
+  controllingTransport = createTransport("myTransport1", true);
 
   controlledTransport.onicecandidate = (event) => {
     if (event.candidate) {
@@ -163,8 +104,16 @@ function setupUI() {
         updateStatus(`Acting as controlled`);
       }
 
-      pollWritable(transport, "transport", sendButton);
-      pollReceivedPackets(transport, "transport");
+      pollWritable(transport, "transport", () => {
+        sendButton.disabled = false;
+        candidateButton.disabled = true;
+        candidateInput.disabled = true;
+        copyParamsButton.disabled = true;
+      });
+      pollReceivedPackets(transport, (packets) => {
+        const message = textDecoder.decode(packets[0].data);
+        updateStatus(`transport received a packet: ${message}`);
+      });
 
       dtls.fingerprint = new Uint8Array(dtls.fingerprint).buffer;
       transport.setRemoteDtlsParameters(dtls);

@@ -1,31 +1,9 @@
-// Configuration
-const CONFIG = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-  video: {
-    width: 1280,
-    height: 720,
-    bitrate: 2_000_000,
-    framerate: 30,
-  },
-  codec: "vp8",
-  maxPacketSize: 1200,
-};
-
 // DOM Elements
-const statusEl = document.getElementById("status");
-const sendButton = document.getElementById("send1");
-const input = document.getElementById("input1");
 const candidateInput = document.getElementById("candidate");
 const candidateButton = document.getElementById("candidateButton");
-const candidateList = document.getElementById("candidateList");
-const parametersEl = document.getElementById("parameters");
 const copyParamsButton = document.getElementById("copyParameters");
 const framerateEl = document.getElementById("framerates");
 const wireProtocolEl = document.getElementById("wireprotocol");
-
-// TextEncoder/Decoder
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
 
 // Transport
 let transport;
@@ -33,43 +11,15 @@ let controllingTransport, controlledTransport;
 
 const tiebreaker = Math.random();
 
-/**
- * Updates the status element with a new message.
- * @param {string} message - The message to display.
- */
-function updateStatus(message) {
-  statusEl.innerText += message + "\n";
-}
-
 let candidates = {
   controlling: [],
   controlled: [],
 };
 
-/**
- * Polls the transport until it becomes writable.
- * @param {RtcTransport} transport - The transport to poll.
- * @param {string} transportName - The name of the transport.
- * @param {HTMLButtonElement} sendButton - The send button associated with the transport.
- */
-async function pollWritable(transport, transportName, sendButton) {
-  while (!await transport.writable()) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  updateStatus(`${transportName} is now writable`);
-  candidateButton.disabled = true;
-  candidateInput.disabled = true;
-  copyParamsButton.disabled = true;
-
-
-  setupMedia();
-}
-
 // Video processing
 let decoder;
 let mediaTrack;
 let streamVersion = 0;
-let frameId = 0;
 const reassemblyBuffer = new Map();
 let pendingPackets = [];
 let renderedFrames = 0;
@@ -79,38 +29,12 @@ let startTime;
 let assembledFrameCounter = 0;
 
 /**
- * Polls the transport for received packets.
- * @param {RtcTransport} transport - The transport to poll.
- * @param {string} transportName - The name of the transport.
- */
-async function pollReceivedPackets(transport, transportName) {
-  while (true) {
-    const packets = transport.getReceivedPackets();
-    if (packets.length > 0) {
-      packets.forEach(packet => pendingPackets.push(packet.data));
-      decodeAvailableFrames();
-    }
-    await new Promise(resolve => setTimeout(resolve, 10));
-  }
-}
-
-/**
  * Initializes the RtcTransport instance.
  */
 function initializeTransport() {
   const params = new URLSearchParams(document.location.search);
-  controlledTransport = new RtcTransport({
-    name: "myTransport1",
-    iceServers: CONFIG.iceServers,
-    iceControlling: false,
-    wireProtocol: wireProtocolEl.value,
-  });
-  controllingTransport = new RtcTransport({
-    name: "myTransport1",
-    iceServers: CONFIG.iceServers,
-    iceControlling: true,
-    wireProtocol: wireProtocolEl.value,
-  });
+  controlledTransport = createTransport("myTransport1", false);
+  controllingTransport = createTransport("myTransport1", true);
 
   controlledTransport.onicecandidate = (event) => {
     if (event.candidate) {
@@ -177,8 +101,16 @@ function setupUI() {
         updateStatus(`Acting as controlled`);
       }
 
-      pollWritable(transport, "transport", sendButton);
-      pollReceivedPackets(transport, "transport");
+      pollWritable(transport, "transport", () => {
+        candidateButton.disabled = true;
+        candidateInput.disabled = true;
+        copyParamsButton.disabled = true;
+        setupMedia();
+      });
+      pollReceivedPackets(transport, (packets) => {
+        packets.forEach(packet => pendingPackets.push(packet.data));
+        decodeAvailableFrames();
+      });
 
       dtls.fingerprint = new Uint8Array(dtls.fingerprint).buffer;
       transport.setRemoteDtlsParameters(dtls);
@@ -190,83 +122,6 @@ function setupUI() {
       console.error("Error parsing candidate:", error);
     }
   };
-}
-
-
-/**
- * Handles an encoded video chunk.
- * @param {EncodedVideoChunk} chunk - The encoded video chunk.
- */
-function handleEncodedChunk(chunk, version) {
-  frameId++;
-  const chunkData = new Uint8Array(chunk.byteLength);
-  chunk.copyTo(chunkData);
-
-  const packets = [];
-  const maxPayloadSize = CONFIG.maxPacketSize - 6; // 6 bytes for header
-  const numPackets = Math.ceil(chunkData.byteLength / maxPayloadSize);
-
-  for (let i = 0, packetSeq = 0; i < chunkData.byteLength; i += maxPayloadSize, packetSeq++) {
-    const end = Math.min(i + maxPayloadSize, chunkData.byteLength);
-    const packet = new ArrayBuffer(end - i + 6);
-    const packetView = new DataView(packet);
-    packetView.setUint8(0, version);
-    packetView.setUint8(1, chunk.type === "key" ? 1 : 0);
-    packetView.setUint16(2, frameId, false); // big-endian
-    packetView.setUint8(4, packetSeq);
-    packetView.setUint8(5, numPackets);
-    new Uint8Array(packet, 6).set(chunkData.slice(i, end));
-    packets.push({ data: packet });
-  }
-
-  transport.sendPackets(packets);
-}
-
-/**
- * Creates a new VideoEncoder.
- * @returns {VideoEncoder} The configured VideoEncoder.
- */
-function createEncoder(version) {
-  const encoder = new VideoEncoder({
-    output: (chunk) => handleEncodedChunk(chunk, version),
-    error: (e) => console.error(e.message),
-  });
-  encoder.configure({
-    codec: CONFIG.codec,
-    width: CONFIG.video.width,
-    height: CONFIG.video.height,
-    bitrate: CONFIG.video.bitrate,
-    framerate: CONFIG.video.framerate,
-  });
-  return encoder;
-}
-
-/**
- * Handles a decoded video frame.
- * @param {VideoFrame} frame - The decoded video frame.
- */
-function handleDecodedFrame(frame) {
-  renderedFrames++;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(frame, 0, 0);
-  frame.close();
-}
-
-/**
- * Creates a new VideoDecoder.
- * @returns {VideoDecoder} The configured VideoDecoder.
- */
-function createDecoder() {
-  const decoder = new VideoDecoder({
-    output: handleDecodedFrame,
-    error: (e) => console.error(e.message),
-  });
-  decoder.configure({
-    codec: CONFIG.codec,
-    codedWidth: CONFIG.video.width,
-    codedHeight: CONFIG.video.height,
-  });
-  return decoder;
 }
 
 let lastDecodedFrameId = -1;
@@ -286,7 +141,7 @@ function decodeAvailableFrames() {
     const frameId = packetView.getUint16(2, false);
     const packetSeq = packetView.getUint8(4);
     const numPackets = packetView.getUint8(5);
-    const data = new Uint8Array(packet, 6);
+    const data = new Uint8Array(packet, 10);
 
     if (!reassemblyBuffer.get(frameId)) {
       reassemblyBuffer.set(frameId, {
@@ -357,7 +212,7 @@ async function setupMedia() {
 
     mediaTrack = stream.getTracks()[0];
     const processor = new MediaStreamTrackProcessor(mediaTrack);
-    const encoder = createEncoder(streamVersion);
+    const encoder = createEncoder(transport, streamVersion);
     startTime = performance.now();
 
     let isFirstFrame = true;
@@ -398,9 +253,10 @@ function main() {
   initializeTransport();
   setupUI();
 
+  const canvas = document.getElementById("canvas");
   canvas.width = CONFIG.video.width;
   canvas.height = CONFIG.video.height;
-  decoder = createDecoder();
+  decoder = createDecoder(canvas);
 }
 
 main();

@@ -1,10 +1,4 @@
-// Configuration
-const CONFIG = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
-
 // DOM Elements
-const statusEl = document.getElementById("status");
 const sendButton1 = document.getElementById("send1");
 const sendButton2 = document.getElementById("send2");
 const input1 = document.getElementById("input1");
@@ -16,77 +10,6 @@ const textDecoder = new TextDecoder();
 
 // Transports
 let transport1, transport2;
-
-/**
- * Updates the status element with a new message.
- * @param {string} message - The message to display.
- */
-function updateStatus(message) {
-  statusEl.innerText += message + "\n";
-}
-
-/**
- * Sends an ICE candidate to the peer transport.
- * @param {RtcTransport} peerTransport - The peer transport.
- * @param {string} peerTransportName - The name of the peer transport.
- * @param {Event} event - The ICE candidate event.
- */
-function sendCandidateToPeer(peerTransport, peerTransportName, event) {
-  if (event.candidate) {
-    console.log(`Sending candidate to ${peerTransportName}:`, event.candidate);
-    peerTransport.addRemoteCandidate(event.candidate);
-    updateStatus(`Sent candidate to ${peerTransportName}`);
-  }
-}
-
-/**
- * Polls a transport until it becomes writable.
- * @param {RtcTransport} transport - The transport to poll.
- * @param {string} transportName - The name of the transport.
- * @param {HTMLButtonElement} sendButton - The send button associated with the transport.
- */
-async function pollWritable(transport, transportName, sendButton) {
-  while (!await transport.writable()) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  updateStatus(`${transportName} is now writable`);
-  sendButton.disabled = false;
-}
-
-/**
- * Polls a transport for received packets.
- * @param {RtcTransport} transport - The transport to poll.
- * @param {string} transportName - The name of the transport.
- */
-async function pollReceivedPackets(transport, transportName) {
-  while (true) {
-    const packets = transport.getReceivedPackets();
-    if (packets.length > 0) {
-      const message = textDecoder.decode(packets[0].data);
-      updateStatus(`${transportName} received a packet: ${message}`);
-    }
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-}
-
-/**
- * Creates and configures an RtcTransport instance.
- * @param {string} name - The name of the transport.
- * @param {boolean} isControlling - Whether the transport is controlling.
- * @returns {RtcTransport} The configured RtcTransport instance.
- */
-function createTransport(name, isControlling) {
-  let protocol = new URLSearchParams(document.location.search).get("protocol");
-  if (!protocol) {
-    protocol = 'dtls-srtp';
-  }
-  return new RtcTransport({
-    name,
-    iceServers: CONFIG.iceServers,
-    iceControlling: isControlling,
-    wireProtocol: protocol,
-  });
-}
 
 /**
  * Initializes the two RtcTransport instances and sets up their communication.
@@ -109,11 +32,17 @@ function initializeTransports() {
     fingerprint: transport2.fingerprint,
   });
 
-  pollWritable(transport1, "transport1", sendButton1);
-  pollWritable(transport2, "transport2", sendButton2);
+  pollWritable(transport1, "transport1", () => sendButton1.disabled = false);
+  pollWritable(transport2, "transport2", () => sendButton2.disabled = false);
 
-  pollReceivedPackets(transport1, "transport1");
-  pollReceivedPackets(transport2, "transport2");
+  pollReceivedPackets(transport1, (packets) => {
+    const message = textDecoder.decode(packets[0].data);
+    updateStatus(`transport1 received a packet: ${message}`);
+  });
+  pollReceivedPackets(transport2, (packets) => {
+    const message = textDecoder.decode(packets[0].data);
+    updateStatus(`transport2 received a packet: ${message}`);
+  });
 }
 
 /**

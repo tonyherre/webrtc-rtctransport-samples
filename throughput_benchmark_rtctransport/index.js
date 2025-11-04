@@ -1,108 +1,7 @@
-function exchangeIceCandidates(pc1, pc2) {
-  function doExchange(localPc, remotePc) {
-    localPc.addEventListener('icecandidate', event => {
-      const {candidate} = event;
-      if (candidate && remotePc.signalingState !== 'closed') {
-        remotePc.addIceCandidate(candidate);
-      }
-    });
-  }
-  doExchange(pc1, pc2);
-  doExchange(pc2, pc1);
-}
-
-async function connect(pc1, pc2) {
-  exchangeIceCandidates(pc1, pc2);
-  exchangeIceCandidates(pc2, pc1);
-
-  const offer = await pc1.createOffer();
-  await pc1.setLocalDescription(offer);
-  await pc2.setRemoteDescription(pc1.localDescription);
-  await pc2.setLocalDescription();
-  await pc1.setRemoteDescription(pc2.localDescription);
-}
-const statusEl = document.getElementById("status");
-
-/**
- * Updates the status element with a new message.
- * @param {string} message - The message to display.
- */
-function updateStatus(message) {
-  statusEl.innerText += message + "\n";
-}
-
-/**
- * Sends an ICE candidate to the peer transport.
- * @param {RtcTransport} peerTransport - The peer transport.
- * @param {string} peerTransportName - The name of the peer transport.
- * @param {Event} event - The ICE candidate event.
- */
-function sendCandidateToPeer(peerTransport, peerTransportName, event) {
-  if (event.candidate) {
-    console.log(`Sending candidate to ${peerTransportName}:`, event.candidate);
-    peerTransport.addRemoteCandidate(event.candidate);
-    updateStatus(`Sent candidate to ${peerTransportName}`);
-  }
-}
 let transport1PromiseResolver;
 let transport1Promise = new Promise((resolve) => {
   transport1PromiseResolver = resolve;
 });
-/**
- * Polls a transport until it becomes writable.
- * @param {RtcTransport} transport - The transport to poll.
- * @param {string} transportName - The name of the transport.
- * @param {HTMLButtonElement} sendButton - The send button associated with the transport.
- */
-async function pollWritable(transport, transportName) {
-  while (!await transport.writable()) {
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  updateStatus(`${transportName} is now writable`);
-  if (transportName === "transport1") {
-    transport1PromiseResolver();
-  }
-}
-
-/**
- * Polls a transport for received packets.
- * @param {RtcTransport} transport - The transport to poll.
- */
-async function pollReceivedPackets(transport, callback) {
-  let buffer = new ArrayBuffer(2000);
-  while (true) {
-    const packets = transport.getReceivedPackets();
-    if (packets.length > 0) {
-      packets.forEach(packet => {
-        callback(packet.data);
-      });
-    }
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-}
-// Configuration
-const CONFIG = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
-
-/**
- * Creates and configures an RtcTransport instance.
- * @param {string} name - The name of the transport.
- * @param {boolean} isControlling - Whether the transport is controlling.
- * @returns {RtcTransport} The configured RtcTransport instance.
- */
-function createTransport(name, isControlling) {
-  let protocol = new URLSearchParams(document.location.search).get("protocol");
-  if (!protocol) {
-    protocol = "dtls";
-  }
-  return new RtcTransport({
-    name,
-    iceServers: CONFIG.iceServers,
-    iceControlling: isControlling,
-    wireProtocol: protocol,
-  });
-}
 
 // Transports
 let transport1, transport2;
@@ -127,7 +26,7 @@ function initializeTransports() {
     fingerprint: transport2.fingerprint,
   });
 
-  pollWritable(transport1, "transport1");
+  pollWritable(transport1, "transport1", () => transport1PromiseResolver());
   pollWritable(transport2, "transport2");
 }
 
@@ -195,31 +94,31 @@ async function benchmark() {
     const promise = new Promise(res => {
       resolve = res;
     });
-    pollReceivedPackets(transport2, receivedBuff => {
-      receivedPackets++;
-      completed += receivedBuff.byteLength;
-
-      const percentageCompleted = Math.floor(totalSentPackets / totalPacketCount * 100);
-      if (percentageCompleted > lastPercentageCompleted) {
-        const duration = (performance.now() - startTimestamp) / 1000;
-        const speed = completed / 1_000_000 / duration * 8;
-        progressBar.style = `width: ${percentageCompleted}%`;
-        progressBar.innerText = `${percentageCompleted}%`;
-        speedElem.innerText = speed.toFixed(1);
-      }
-      lastPercentageCompleted = percentageCompleted;
-
-      if (receivedPackets === totalPacketCount) {
-        const duration = (performance.now() - startTimestamp) / 1000;
-        const speed = completed / 1_000_000 / duration * 8;
-        console.log(
-            `Transfer complete(${duration}s, ${totalToTransferBytes / 1_000_000} MB): ${speed} MB/s`);
-        resolve({
-          duration,
-          speed,
-          speedFormatted: `${speed} Mb/s`,
+    pollReceivedPackets(transport2, (receivedPackets) => {
+        receivedPackets.forEach(packet => {
+            completed += packet.data.byteLength;
         });
-      }
+        const percentageCompleted = Math.floor(totalSentPackets / totalPacketCount * 100);
+        if (percentageCompleted > lastPercentageCompleted) {
+            const duration = (performance.now() - startTimestamp) / 1000;
+            const speed = completed / 1_000_000 / duration * 8;
+            progressBar.style = `width: ${percentageCompleted}%`;
+            progressBar.innerText = `${percentageCompleted}%`;
+            speedElem.innerText = speed.toFixed(1);
+        }
+        lastPercentageCompleted = percentageCompleted;
+
+        if (receivedPackets.length === totalPacketCount) {
+            const duration = (performance.now() - startTimestamp) / 1000;
+            const speed = completed / 1_000_000 / duration * 8;
+            console.log(
+                `Transfer complete(${duration}s, ${totalToTransferBytes / 1_000_000} MB): ${speed} MB/s`);
+            resolve({
+                duration,
+                speed,
+                speedFormatted: `${speed} Mb/s`,
+            });
+        }
     });
 
     console.log('Starting benchmark with:', config);
