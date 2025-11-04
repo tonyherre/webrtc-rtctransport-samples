@@ -37,13 +37,13 @@ function initializeTransport() {
   controllingTransport = createTransport("myTransport1", true);
 
   controlledTransport.onicecandidate = (event) => {
-    if (event.candidate) {
+    if (event.candidate && event.candidate.type === "relay") {
       candidates.controlled.push(event.candidate);
     }
   };
 
   controllingTransport.onicecandidate = (event) => {
-    if (event.candidate) {
+    if (event.candidate && event.candidate.type === "relay") {
       candidates.controlling.push(event.candidate);
     }
   };
@@ -76,6 +76,33 @@ function initializeTransport() {
  * Sets up the event listeners for the UI elements.
  */
 function setupUI() {
+  const turnUrlInput = document.getElementById("turn-url");
+  const turnUsernameInput = document.getElementById("turn-username");
+  const turnPasswordInput = document.getElementById("turn-password");
+  const addTurnButton = document.getElementById("add-turn-button");
+
+  addTurnButton.onclick = () => {
+    const url = turnUrlInput.value;
+    const username = turnUsernameInput.value;
+    const credential = turnPasswordInput.value;
+
+    if (url) {
+      const iceServer = {
+        urls: url,
+      };
+      if (username && credential) {
+        iceServer.username = username;
+        iceServer.credential = credential;
+      }
+      CONFIG.iceServers.push(iceServer);
+      updateStatus(`Added TURN server: ${url}`);
+      turnUrlInput.value = "";
+      turnUsernameInput.value = "";
+      turnPasswordInput.value = "";
+    }
+    initializeTransport();
+  };
+
   candidateInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") {
       candidateButton.click();
