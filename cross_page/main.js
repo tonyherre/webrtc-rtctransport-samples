@@ -104,7 +104,7 @@ function setupUI() {
         updateStatus(`Acting as controlled`);
       }
 
-      pollWritable(transport, "transport", () => {
+      waitForFirstWritable(transport, "transport", () => {
         sendButton.disabled = false;
         candidateButton.disabled = true;
         candidateInput.disabled = true;

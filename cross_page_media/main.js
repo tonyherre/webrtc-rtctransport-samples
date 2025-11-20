@@ -128,7 +128,7 @@ function setupUI() {
         updateStatus(`Acting as controlled`);
       }
 
-      pollWritable(transport, "transport", () => {
+      waitForFirstWritable(transport, "transport", () => {
         candidateButton.disabled = true;
         candidateInput.disabled = true;
         copyParamsButton.disabled = true;

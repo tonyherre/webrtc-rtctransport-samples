@@ -42,8 +42,8 @@ function initializeTransports() {
     fingerprint: transport2.fingerprint,
   });
 
-  pollWritable(transport1, "transport1", () => setupMedia());
-  pollWritable(transport2, "transport2");
+  waitForFirstWritable(transport1, "transport1", () => setupMedia());
+  waitForFirstWritable(transport2, "transport2");
 
   pollReceivedPackets(transport1, (packets) => {
     packets.forEach(packet => {
@@ -82,7 +82,7 @@ async function setupMedia() {
       mediaTrack.stop();
     }
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: CONFIG.video.width, height: CONFIG.video.height },
+      video: { width: {exact: CONFIG.video.width}, height: CONFIG.video.height },
     });
 
     mediaTrack = stream.getTracks()[0];

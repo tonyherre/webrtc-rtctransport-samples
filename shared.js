@@ -11,7 +11,8 @@ const CONFIG = {
   maxPacketSize: 1200,
 };
 
-let byob_support = typeof RtcReceivedPacket !== 'undefined' && RtcReceivedPacket && 'copyPayloadTo' in RtcReceivedPacket.prototype;
+const byob_support = typeof RtcReceivedPacket !== 'undefined' && RtcReceivedPacket && 'copyPayloadTo' in RtcReceivedPacket.prototype;
+const writable_change_event_support = 'onwritablechange' in RtcTransport.prototype;
 
 // DOM Elements
 const statusEl = document.getElementById("status");
@@ -48,14 +49,27 @@ function sendCandidateToPeer(peerTransport, peerTransportName, event) {
 }
 
 /**
- * Polls a transport until it becomes writable.
+ * Invokes callback once the transport first becomes writable.
  * @param {RtcTransport} transport - The transport to poll.
  * @param {string} transportName - The name of the transport.
- * @param {HTMLButtonElement} sendButton - The send button associated with the transport.
+ * @param callback - The callback to invoke.
  */
-async function pollWritable(transport, transportName, callback) {
-  while (!await transport.writable()) {
-    await new Promise(resolve => setTimeout(resolve, 100));
+async function waitForFirstWritable(transport, transportName, callback) {
+  if (writable_change_event_support) {
+    await new Promise((resolve) => {
+      transport.onwritablechange = async () => {
+        if (await transport.writable()) {
+          resolve();
+        }
+      }
+    });
+    transport.onwritablechange = null;
+  } else {
+    // No event support, we'll have to poll.
+    updateStatus(`No onwritablechange event, polling RtcTransport.writable().`);
+    while (!await transport.writable()) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
   }
   updateStatus(`${transportName} is now writable`);
   if (callback) {

@@ -32,8 +32,8 @@ function initializeTransports() {
     fingerprint: transport2.fingerprint,
   });
 
-  pollWritable(transport1, "transport1", () => sendButton1.disabled = false);
-  pollWritable(transport2, "transport2", () => sendButton2.disabled = false);
+  waitForFirstWritable(transport1, "transport1", () => sendButton1.disabled = false);
+  waitForFirstWritable(transport2, "transport2", () => sendButton2.disabled = false);
 
   pollReceivedPackets(transport1, (packets) => {
     const message = textDecoder.decode(packets[0].data);
