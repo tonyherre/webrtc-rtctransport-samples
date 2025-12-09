@@ -125,7 +125,7 @@ function handleEncodedChunk(transport, chunk, version, frameId) {
     let packet_buffer;
     if (byob_support) {
       packet_buffer = bufferPool.pop();
-      if (!packet_buffer) alert("Buffer pool empty");
+      if (!packet_buffer) console.error("Buffer pool empty");
     } else {
       packet_buffer = new ArrayBuffer(packet_length);
     }

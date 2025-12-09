@@ -35,14 +35,22 @@ function initializeTransports() {
   waitForFirstWritable(transport1, "transport1", () => sendButton1.disabled = false);
   waitForFirstWritable(transport2, "transport2", () => sendButton2.disabled = false);
 
-  pollReceivedPackets(transport1, (packets) => {
-    const message = textDecoder.decode(packets[0].data);
-    updateStatus(`transport1 received a packet: ${message}`);
-  });
-  pollReceivedPackets(transport2, (packets) => {
-    const message = textDecoder.decode(packets[0].data);
-    updateStatus(`transport2 received a packet: ${message}`);
-  });
+  function handlePackets(packets, transportName) {
+    packets.forEach(packet => {
+      let buffer;
+      if (byob_support) {
+        buffer = new ArrayBuffer(packet.payloadByteLength);
+        packet.copyPayloadTo(buffer);
+      } else {
+        buffer = packet.data;
+      }
+      const message = textDecoder.decode(buffer);
+      updateStatus(`${transportName} received a packet: ${message}`);
+    });
+
+  }
+  pollReceivedPackets(transport1, (packets) => { handlePackets(packets, 'transport1')});
+  pollReceivedPackets(transport2, (packets) => { handlePackets(packets, 'transport2')});
 }
 
 /**

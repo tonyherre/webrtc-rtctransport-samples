@@ -110,10 +110,21 @@ function setupUI() {
         candidateInput.disabled = true;
         copyParamsButton.disabled = true;
       });
-      pollReceivedPackets(transport, (packets) => {
-        const message = textDecoder.decode(packets[0].data);
-        updateStatus(`transport received a packet: ${message}`);
-      });
+      function handlePackets(packets, transportName) {
+        packets.forEach(packet => {
+          let buffer;
+          if (byob_support) {
+            buffer = new ArrayBuffer(packet.payloadByteLength);
+            packet.copyPayloadTo(buffer);
+          } else {
+            buffer = packet.data;
+          }
+          const message = textDecoder.decode(buffer);
+          updateStatus(`${transportName} received a packet: ${message}`);
+        });
+
+      }
+      pollReceivedPackets(transport, (packets) => { handlePackets(packets, 'transport')});
 
       dtls.fingerprint = new Uint8Array(dtls.fingerprint).buffer;
       transport.setRemoteDtlsParameters(dtls);

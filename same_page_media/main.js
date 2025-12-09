@@ -11,7 +11,7 @@ let decoder;
 let mediaTrack;
 let streamVersion = 0;
 const reassemblyBuffer = {};
-const bufferPoolSize = 500;
+const bufferPoolSize = 50;
 let bufferPool = byob_support ? [...Array(bufferPoolSize)].map(() => {
   return new ArrayBuffer(CONFIG.maxPacketSize);
 }) : [];

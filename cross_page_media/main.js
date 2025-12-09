@@ -21,6 +21,10 @@ let decoder;
 let mediaTrack;
 let streamVersion = 0;
 const reassemblyBuffer = new Map();
+const bufferPoolSize = 50;
+let bufferPool = byob_support ? [...Array(bufferPoolSize)].map(() => {
+  return new ArrayBuffer(CONFIG.maxPacketSize);
+}) : [];
 let pendingPackets = [];
 let renderedFrames = 0;
 let sentFrameCounter = 0;
@@ -135,8 +139,19 @@ function setupUI() {
         setupMedia();
       });
       pollReceivedPackets(transport, (packets) => {
-        packets.forEach(packet => pendingPackets.push(packet.data));
-        decodeAvailableFrames();
+        packets.forEach(packet => {
+          let buffer;
+          if(byob_support) {
+            let buffer = bufferPool.pop();
+            if (!buffer) console.log("Buffer pool empty?");
+            packet.copyPayloadTo(buffer);
+            pendingPackets.push(new Uint8Array(buffer, 0, packet.payloadByteLength));
+          } else {
+            buffer = packet.data;
+            pendingPackets.push(buffer);
+          }
+        });
+        decodeAvailableFrames(pendingPackets, reassemblyBuffer, decoder, streamVersion);
       });
 
       dtls.fingerprint = new Uint8Array(dtls.fingerprint).buffer;
@@ -149,80 +164,6 @@ function setupUI() {
       console.error("Error parsing candidate:", error);
     }
   };
-}
-
-let lastDecodedFrameId = -1;
-
-/**
- * Decodes available frames from the pending packets.
- */
-function decodeAvailableFrames() {
-  while (pendingPackets.length > 0) {
-    
-    const packet = pendingPackets.shift();
-    const packetView = new DataView(packet);
-    const version = packetView.getUint8(0);
-
-
-    const isKeyFrame = packetView.getUint8(1) === 1;
-    const frameId = packetView.getUint16(2, false);
-    const packetSeq = packetView.getUint8(4);
-    const numPackets = packetView.getUint8(5);
-    const data = new Uint8Array(packet, 10);
-
-    if (!reassemblyBuffer.get(frameId)) {
-      reassemblyBuffer.set(frameId, {
-        packets: new Array(numPackets),
-        numPackets: numPackets,
-        isKeyFrame: isKeyFrame,
-        receivedCount: 0,
-      });
-    }
-
-    if (!reassemblyBuffer.get(frameId).packets[packetSeq]) {
-      reassemblyBuffer.get(frameId).receivedCount++;
-    }
-    reassemblyBuffer.get(frameId).packets[packetSeq] = data;
-    if (reassemblyBuffer.get(frameId).receivedCount == reassemblyBuffer.get(frameId).numPackets && reassemblyBuffer.get(frameId).isKeyFrame) {
-      lastDecodedFrameId = frameId - 1;
-      for (const [frameId, _] of reassemblyBuffer) {
-        if (frameId <= lastDecodedFrameId) {
-          reassemblyBuffer.delete(frameId);
-        }
-      }
-    }
-  }
-
-  // Decode fully assembled frames in order.
-  const sortedFrameIds = new Map([...reassemblyBuffer.entries()].sort());
-
-  for (const [frameId, _] of sortedFrameIds) {
-    if (frameId != lastDecodedFrameId+1 && !reassemblyBuffer.get(frameId).isKeyFrame) {
-      break;
-    }
-
-    if (reassemblyBuffer.get(frameId).receivedCount === reassemblyBuffer.get(frameId).numPackets) {
-      // We have a full frame, let's assemble and decode
-      const framePackets = reassemblyBuffer.get(frameId).packets;
-      const totalSize = framePackets.reduce((acc, p) => acc + p.byteLength, 0);
-      const encodedFrame = new Uint8Array(totalSize);
-      let offset = 0;
-      for (const p of framePackets) {
-        encodedFrame.set(p, offset);
-        offset += p.length;
-      }
-      assembledFrameCounter++;
-      const chunk = new EncodedVideoChunk({
-        timestamp: frameId,
-        type: reassemblyBuffer.get(frameId).isKeyFrame ? "key" : "delta",
-        data: encodedFrame,
-      });
-      decoder.decode(chunk);
-      lastDecodedFrameId = frameId;
-
-      reassemblyBuffer.delete(frameId);
-    }
-  }
 }
 
 /**
