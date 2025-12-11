@@ -26,8 +26,8 @@ function initializeTransports() {
     fingerprint: transport2.fingerprint,
   });
 
-  pollWritable(transport1, "transport1", () => transport1PromiseResolver());
-  pollWritable(transport2, "transport2");
+  waitForFirstWritable(transport1, "transport1", () => transport1PromiseResolver());
+  waitForFirstWritable(transport2, "transport2");
 }
 
 function readConfig() {
