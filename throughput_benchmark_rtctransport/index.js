@@ -9,8 +9,8 @@ let transport1, transport2;
  * Initializes the two RtcTransport instances and sets up their communication.
  */
 function initializeTransports() {
-  transport1 = createTransport("myTransport1", true);
-  transport2 = createTransport("myTransport2", false);
+  transport1 = createTransport("myTransport1", true, 'dtls');
+  transport2 = createTransport("myTransport2", false, 'dtls');
 
   transport1.onicecandidate = (event) => sendCandidateToPeer(transport2, "transport2", event);
   transport2.onicecandidate = (event) => sendCandidateToPeer(transport1, "transport1", event);

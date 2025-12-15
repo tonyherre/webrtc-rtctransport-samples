@@ -95,15 +95,16 @@ async function pollReceivedPackets(transport, callback) {
  * Creates and configures an RtcTransport instance.
  * @param {string} name - The name of the transport.
  * @param {boolean} isControlling - Whether the transport is controlling.
+ * @param {string?} protocol - Is set, the wireprotocol to use.
  * @returns {RtcTransport} The configured RtcTransport instance.
  */
-function createTransport(name, isControlling) {
-  const protocol = new URLSearchParams(document.location.search).get("protocol");
+function createTransport(name, isControlling, protocol) {
+  const urlParamProtocol = new URLSearchParams(document.location.search).get("protocol");
   return new RtcTransport({
     name,
     iceServers: CONFIG.iceServers,
     iceControlling: isControlling,
-    wireProtocol: protocol || 'dtls-srtp',
+    wireProtocol: protocol || urlParamProtocol || 'dtls-srtp',
   });
 }
 
