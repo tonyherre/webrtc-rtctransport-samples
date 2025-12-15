@@ -96,7 +96,7 @@ async function benchmark() {
     });
     pollReceivedPackets(transport2, (receivedPackets) => {
         receivedPackets.forEach(packet => {
-            completed += packet.data.byteLength;
+            completed += packet.payloadByteLength;
         });
         const percentageCompleted = Math.floor(totalSentPackets / totalPacketCount * 100);
         if (percentageCompleted > lastPercentageCompleted) {
